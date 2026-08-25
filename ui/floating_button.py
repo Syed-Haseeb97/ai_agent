@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import QWidget, QSystemTrayIcon, QMenu, QApplication
 from actions.windows_actions import WindowsActionExecutor
 from ui.status_popup import StatusPopup
 from ui.response_popup import ResponsePopup
-from ui.input_popup import InputPopup
 from voice.listener import VoiceListener
 from voice.tts import TTS
 from vision.capture import capture_primary_screen
@@ -57,7 +56,6 @@ class FloatingButton(QWidget):
         self.move(screen.right() - 100, 34)
         self.status_popup = StatusPopup()
         self.response_popup = ResponsePopup()
-        self.input_popup = InputPopup()
         self.action_executor = WindowsActionExecutor()
 
         self.sig_trigger_requested.connect(self.trigger)
@@ -68,7 +66,7 @@ class FloatingButton(QWidget):
         self.sig_state.connect(self._on_state)
         self.sig_error.connect(self._on_error)
         self.sig_finished.connect(self._on_finished)
-        self.input_popup.submitted.connect(self.submit_text)
+        self.response_popup.submitted.connect(self.submit_text)
 
         self._anim_timer = QTimer(self); self._anim_timer.timeout.connect(self._animate); self._anim_timer.start(16)
         self._init_tray()
@@ -142,7 +140,7 @@ class FloatingButton(QWidget):
         if self._busy:
             if self.state==State.SPEAKING: self._interrupt_current()
             else: return
-        self.input_popup.open_near(self.pos())
+        self.response_popup.show_chat(self.pos())
 
     def submit_text(self,text):
         if not text.strip() or self._busy: return
@@ -162,10 +160,8 @@ class FloatingButton(QWidget):
     def _is_current(self,run_id): return run_id==self._run_id
 
     def _wait_for_response_ui(self, run_id):
-        """Do not let TTS start until Qt has committed this exact answer to history."""
         ready = self._response_ready.get(run_id)
-        if ready is not None:
-            ready.wait(timeout=2.0)
+        if ready is not None: ready.wait(timeout=2.0)
 
     def _pipeline(self,run_id,typed_text):
         try:
