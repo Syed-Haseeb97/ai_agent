@@ -8,5 +8,11 @@ pynput>=1.7.6
 python-dotenv>=1.0.0
 pyttsx3>=2.90
 # PyAudio is required by speech_recognition for microphone input.
-# On Windows install it with: pip install pipwin && pipwin install pyaudio
-# or download a wheel from https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio
+# The project currently uses PyAudioWPatch on Python 3.14.
+
+# Optional F12 screen-click automation:
+# pyautogui>=0.9.54
+# Optional F6 local wake-word support (Python/platform compatibility may vary):
+# openwakeword>=0.6.0
+# numpy>=1.26
+# F5 screen recording uses ffmpeg/ffplay installed separately and available on PATH.
