@@ -252,11 +252,13 @@ class FloatingButton(QWidget):
     def _on_error(self, run_id: int, text: str):
         if not self._is_current(run_id):
             return
-        self.status_popup.hide_popup()
+
+        # Errors belong in the small status popup, never in the main answer box.
+        # The response box is reserved exclusively for successful Gemini answers.
+        self.status_popup.show_message(f"⚠️ {text}", self.pos(), duration_ms=3500)
         self.state = State.ERROR
         self.update()
         self.response_popup.hide_popup()
-        self.response_popup.show_response(f"⚠️ {text}", self.pos(), auto_ms=8000)
         QTimer.singleShot(2500, lambda rid=run_id: self._return_idle(rid))
 
     def _return_idle(self, run_id: int):
