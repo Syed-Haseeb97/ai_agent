@@ -30,6 +30,8 @@ class State(Enum):
 
 
 class FloatingButton(QWidget):
+    # All UI-affecting work must happen on Qt's GUI thread.
+    sig_trigger_requested = pyqtSignal()
     sig_status = pyqtSignal(int, str)
     sig_response = pyqtSignal(int, str)
     sig_state = pyqtSignal(int, object)
@@ -53,6 +55,7 @@ class FloatingButton(QWidget):
         self.move(screen.right() - 100, 34)
         self.status_popup = StatusPopup()
         self.response_popup = ResponsePopup()
+        self.sig_trigger_requested.connect(self.trigger)
         self.sig_status.connect(self._on_status)
         self.sig_response.connect(self._on_response)
         self.sig_state.connect(self._on_state)
@@ -125,8 +128,6 @@ class FloatingButton(QWidget):
             p.setBrush(QBrush(QColor(255, 255, 255, 120 + int(80 * pulse))))
             p.setPen(Qt.PenStyle.NoPen)
             p.drawEllipse(QRectF(dx - 2, dy - 2, 4, 4))
-
-        # Friendly robot emoji in the center instead of plain "AI" text.
         p.setPen(QColor(255, 255, 255, 255))
         p.setFont(QFont("Segoe UI Emoji", 22))
         p.drawText(QRectF(cx - r, cy - r, r * 2, r * 2), Qt.AlignmentFlag.AlignCenter, "🤖")
@@ -169,6 +170,7 @@ class FloatingButton(QWidget):
         return self._run_id
 
     def trigger(self):
+        # This slot is always executed on Qt's GUI thread, including hotkey-triggered calls.
         if self._busy and self.state == State.SPEAKING:
             if self._tts is not None:
                 self._tts.stop()
@@ -184,6 +186,9 @@ class FloatingButton(QWidget):
         self.response_popup.hide_popup()
         self.update()
         threading.Thread(target=self._pipeline, args=(run_id,), daemon=True).start()
+
+    def request_trigger(self):
+        self.sig_trigger_requested.emit()
 
     def _is_current(self, run_id: int) -> bool:
         return run_id == self._run_id
