@@ -8,6 +8,8 @@ import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 
+from features.advanced_features import AdvancedFeatures
+
 
 @dataclass(frozen=True)
 class ActionResult:
@@ -46,11 +48,20 @@ class WindowsActionExecutor:
         "visual studio code": "code.exe", "vs code": "code.exe", "code": "code.exe",
     }
 
+    def __init__(self):
+        self.advanced = AdvancedFeatures()
+
     def try_execute(self, text: str) -> ActionResult:
         original = text.strip()
         q = original.lower()
         if not q:
             return ActionResult(False)
+
+        # New capabilities are isolated here. If they do not recognize a
+        # request, the stable legacy action path below remains unchanged.
+        advanced = self.advanced.try_execute(original)
+        if advanced.handled:
+            return ActionResult(True, advanced.message)
 
         open_words = r"\b(open|launch|start|show|bring up|go to|visit|take me to)\b"
         close_words = r"\b(close|quit|exit|shut down|shut)\b"
@@ -58,7 +69,6 @@ class WindowsActionExecutor:
         result = self._handle_close_command(q, close_words)
         if result.handled:
             return result
-
         result = self._handle_site_command(q)
         if result.handled:
             return result
@@ -115,33 +125,25 @@ class WindowsActionExecutor:
         return ActionResult(False)
 
     def _handle_site_command(self, q: str) -> ActionResult:
-        """Open a known site by name, optionally with a search term."""
         aliases = sorted(self.SITE_ALIASES, key=len, reverse=True)
         site_pattern = "|".join(re.escape(a) for a in aliases)
         match = re.search(r"\b(?:open|launch|start|show|go to|visit|take me to)\b\s+(?:google\s+chrome\s+and\s+)?(?:.*?\s+)?(" + site_pattern + r")\b", q)
         if not match:
             return ActionResult(False)
-
         alias = match.group(1).lower()
         url = self.SITE_ALIASES[alias]
         search_match = re.search(r"\b(?:search|look\s+up|find)\s+(?:for\s+)?(.+)$", q, re.I)
         if search_match:
             term = search_match.group(1).strip(" .?!")
             if term and term not in {alias, alias.removesuffix(".com")}:
-                if "youtube.com" in url:
-                    search_url = url + "/results?search_query=" + urllib.parse.quote_plus(term)
-                else:
-                    search_url = url + "/search?q=" + urllib.parse.quote_plus(term)
+                search_url = (url + "/results?search_query=" if "youtube.com" in url else url + "/search?q=") + urllib.parse.quote_plus(term)
                 self._open_url(search_url)
                 return ActionResult(True, f"Opening {alias} and searching for {term}…")
-
         self._open_url(url)
         return ActionResult(True, f"Opening {alias}…")
 
     @staticmethod
     def _open_url(url: str) -> None:
-        # os.startfile delegates the URL to Windows' default browser reliably,
-        # including when this action is invoked from the assistant's worker thread.
         os.startfile(url)
 
     @staticmethod
