@@ -1,14 +1,8 @@
-"""
-AI Screen Assistant – free MVP for Windows 11
-Click the floating circle (or press Ctrl+Alt+Space) → speak → it sees your screen + answers.
-"""
-
+"""AI Screen Assistant – free MVP for Windows 11."""
 from __future__ import annotations
 
 import sys
 import os
-
-# Ensure project root is on path when run as script
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PyQt6.QtWidgets import QApplication
@@ -17,12 +11,11 @@ from PyQt6.QtGui import QFont
 
 from ui.floating_button import FloatingButton
 from hotkey_manager import HotkeyManager
+from voice.wake_word import WakeWordService
 
 
 def main():
-    QApplication.setHighDpiScaleFactorRoundingPolicy(
-        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-    )
+    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     app.setApplicationName("AI Screen Assistant")
@@ -31,12 +24,14 @@ def main():
     button = FloatingButton()
     button.show()
 
-    # pynput invokes its callback from a worker thread. Never call Qt UI
-    # methods directly there; emit a Qt signal and let the GUI thread handle it.
     hotkey = HotkeyManager(callback=button.request_trigger)
     hotkey.start()
 
+    wake_word = WakeWordService(callback=button.request_trigger)
+    wake_word.start()
+
     app.aboutToQuit.connect(hotkey.stop)
+    app.aboutToQuit.connect(wake_word.stop)
     sys.exit(app.exec())
 
 
