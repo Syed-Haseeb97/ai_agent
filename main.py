@@ -20,25 +20,23 @@ from hotkey_manager import HotkeyManager
 
 
 def main():
-    # High-DPI awareness
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     app = QApplication(sys.argv)
-    app.setQuitOnLastWindowClosed(False)  # keep running when button is hidden
+    app.setQuitOnLastWindowClosed(False)
     app.setApplicationName("AI Screen Assistant")
     app.setFont(QFont("Segoe UI", 10))
 
     button = FloatingButton()
     button.show()
 
-    # Global hotkey
-    hotkey = HotkeyManager(callback=button.trigger)
+    # pynput invokes its callback from a worker thread. Never call Qt UI
+    # methods directly there; emit a Qt signal and let the GUI thread handle it.
+    hotkey = HotkeyManager(callback=button.request_trigger)
     hotkey.start()
 
-    # Clean shutdown
     app.aboutToQuit.connect(hotkey.stop)
-
     sys.exit(app.exec())
 
 
