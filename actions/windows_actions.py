@@ -5,7 +5,6 @@ import os
 import re
 import subprocess
 import urllib.parse
-import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,20 +38,12 @@ class WindowsActionExecutor:
     }
 
     APP_PROCESSES = {
-        "chrome": "chrome.exe",
-        "google chrome": "chrome.exe",
-        "command prompt": "cmd.exe",
-        "cmd": "cmd.exe",
-        "powershell": "powershell.exe",
-        "power shell": "powershell.exe",
-        "notepad": "notepad.exe",
-        "calculator": "calculatorapp.exe",
-        "calc": "calculatorapp.exe",
-        "task manager": "taskmgr.exe",
-        "taskmgr": "taskmgr.exe",
-        "vs code": "code.exe",
-        "visual studio code": "code.exe",
-        "code": "code.exe",
+        "google chrome": "chrome.exe", "chrome": "chrome.exe",
+        "command prompt": "cmd.exe", "cmd": "cmd.exe",
+        "powershell": "powershell.exe", "power shell": "powershell.exe",
+        "notepad": "notepad.exe", "calculator": "calculatorapp.exe", "calc": "calculatorapp.exe",
+        "task manager": "taskmgr.exe", "taskmgr": "taskmgr.exe",
+        "visual studio code": "code.exe", "vs code": "code.exe", "code": "code.exe",
     }
 
     def try_execute(self, text: str) -> ActionResult:
@@ -64,19 +55,16 @@ class WindowsActionExecutor:
         open_words = r"\b(open|launch|start|show|bring up|go to|visit|take me to)\b"
         close_words = r"\b(close|quit|exit|shut down|shut)\b"
 
-        # Close commands are handled before open/site matching.
-        close_result = self._handle_close_command(q, close_words)
-        if close_result.handled:
-            return close_result
+        result = self._handle_close_command(q, close_words)
+        if result.handled:
+            return result
 
-        # Browser/site commands are checked before generic Chrome commands so
-        # "open YouTube" means "open Chrome and navigate to YouTube".
-        site_result = self._handle_site_command(original, q, open_words)
-        if site_result.handled:
-            return site_result
+        result = self._handle_site_command(q)
+        if result.handled:
+            return result
 
         if re.search(open_words + r".*\b(chrome|google chrome)\b", q):
-            self._launch_app("chrome", ["chrome.exe"]); return ActionResult(True, "Opening Chrome…")
+            self._launch_app("Chrome", ["chrome.exe"]); return ActionResult(True, "Opening Chrome…")
         if re.search(open_words + r".*\bcamera\b", q):
             os.startfile("microsoft.windows.camera:"); return ActionResult(True, "Opening Camera…")
         if re.search(open_words + r".*\b(vs code|visual studio code|code)\b", q):
@@ -85,7 +73,7 @@ class WindowsActionExecutor:
             subprocess.Popen(["taskmgr.exe"], shell=False); return ActionResult(True, "Opening Task Manager…")
         if re.search(open_words + r".*\b(calculator|calc)\b", q):
             subprocess.Popen(["calc.exe"], shell=False); return ActionResult(True, "Opening Calculator…")
-        if re.search(open_words + r".*\b(notepad)\b", q):
+        if re.search(open_words + r".*\bnotepad\b", q):
             subprocess.Popen(["notepad.exe"], shell=False); return ActionResult(True, "Opening Notepad…")
         if re.search(open_words + r".*\b(file explorer|explorer)\b", q):
             subprocess.Popen(["explorer.exe"], shell=False); return ActionResult(True, "Opening File Explorer…")
@@ -98,7 +86,7 @@ class WindowsActionExecutor:
         if url_match:
             url = url_match.group(1)
             url = "https://" + url if url.startswith("www.") else url
-            webbrowser.open(url)
+            self._open_url(url)
             return ActionResult(True, f"Opening {url}…")
 
         if re.search(r"\b(bluetooth)\b.*\b(on|enable|turn on)\b|\b(turn on|enable)\b.*\bbluetooth\b", q):
@@ -120,32 +108,41 @@ class WindowsActionExecutor:
         return ActionResult(False)
 
     def _handle_close_command(self, q: str, close_words: str) -> ActionResult:
-        """Close only explicitly allowlisted Windows applications."""
         for label, executable in sorted(self.APP_PROCESSES.items(), key=lambda item: -len(item[0])):
             if re.search(close_words + rf".*\b{re.escape(label)}\b", q):
                 self._kill_process(executable)
                 return ActionResult(True, f"Closing {label.title()}…")
         return ActionResult(False)
 
-    def _handle_site_command(self, original: str, q: str, open_words: str) -> ActionResult:
-        """Handle site aliases and simple multi-step browser/search requests."""
-        site_pattern = r"(?:youtube(?:\.com)?|github(?:\.com)?|google(?:\.com)?|gmail(?:\.com)?|chatgpt(?:\.com)?|reddit(?:\.com)?|amazon(?:\.com)?|netflix(?:\.com)?)"
-        match = re.search(open_words + r"\s+(?:chrome\s+and\s+)?(?:.*?\s+)?(" + site_pattern + r")", q, re.I)
+    def _handle_site_command(self, q: str) -> ActionResult:
+        """Open a known site by name, optionally with a search term."""
+        aliases = sorted(self.SITE_ALIASES, key=len, reverse=True)
+        site_pattern = "|".join(re.escape(a) for a in aliases)
+        match = re.search(r"\b(?:open|launch|start|show|go to|visit|take me to)\b\s+(?:google\s+chrome\s+and\s+)?(?:.*?\s+)?(" + site_pattern + r")\b", q)
         if not match:
             return ActionResult(False)
 
         alias = match.group(1).lower()
         url = self.SITE_ALIASES[alias]
-        search_match = re.search(r"\b(?:and\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+)$", q, re.I)
+        search_match = re.search(r"\b(?:search|look\s+up|find)\s+(?:for\s+)?(.+)$", q, re.I)
         if search_match:
             term = search_match.group(1).strip(" .?!")
-            if term and term.lower() not in {alias, alias.removesuffix(".com")}:
-                search_url = url + ("/results?search_query=" if "youtube" in url else "/search?q=") + urllib.parse.quote_plus(term)
-                webbrowser.open(search_url)
+            if term and term not in {alias, alias.removesuffix(".com")}:
+                if "youtube.com" in url:
+                    search_url = url + "/results?search_query=" + urllib.parse.quote_plus(term)
+                else:
+                    search_url = url + "/search?q=" + urllib.parse.quote_plus(term)
+                self._open_url(search_url)
                 return ActionResult(True, f"Opening {alias} and searching for {term}…")
 
-        webbrowser.open(url)
+        self._open_url(url)
         return ActionResult(True, f"Opening {alias}…")
+
+    @staticmethod
+    def _open_url(url: str) -> None:
+        # os.startfile delegates the URL to Windows' default browser reliably,
+        # including when this action is invoked from the assistant's worker thread.
+        os.startfile(url)
 
     @staticmethod
     def _launch_app(label: str, commands: list[str]) -> None:
