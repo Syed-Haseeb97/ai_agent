@@ -49,6 +49,7 @@ class FloatingButton(QWidget):
         self._drag_pos: QPoint | None = None
         self._busy = False
         self._run_id = 0
+        self._response_ready: dict[int, threading.Event] = {}
         self._phase = 0.0
         self._hover = False
 
@@ -148,7 +149,7 @@ class FloatingButton(QWidget):
         self._start_run(text.strip())
 
     def _start_run(self,user_text):
-        run_id=self._next_run(); self._busy=True; self.status_popup.hide_popup(); self.update()
+        run_id=self._next_run(); self._busy=True; self._response_ready[run_id] = threading.Event(); self.status_popup.hide_popup(); self.update()
         if user_text:
             self.response_popup.add_user_message(user_text, self.pos())
         threading.Thread(target=self._pipeline,args=(run_id,user_text),daemon=True).start()
@@ -156,8 +157,15 @@ class FloatingButton(QWidget):
     def _interrupt_current(self):
         if self._tts is not None: self._tts.stop()
         self._next_run(); self._busy=False; self.status_popup.hide_popup(); self.state=State.IDLE; self.update()
+        self._response_ready.clear()
 
     def _is_current(self,run_id): return run_id==self._run_id
+
+    def _wait_for_response_ui(self, run_id):
+        """Do not let TTS start until Qt has committed this exact answer to history."""
+        ready = self._response_ready.get(run_id)
+        if ready is not None:
+            ready.wait(timeout=2.0)
 
     def _pipeline(self,run_id,typed_text):
         try:
@@ -174,7 +182,10 @@ class FloatingButton(QWidget):
 
             action=self.action_executor.try_execute(user_text)
             if action.handled:
-                self.sig_response.emit(run_id,action.message); self.sig_state.emit(run_id,State.SPEAKING); self.sig_status.emit(run_id,"Speaking…  •  click to interrupt")
+                self.sig_response.emit(run_id,action.message)
+                self._wait_for_response_ui(run_id)
+                if not self._is_current(run_id): return
+                self.sig_state.emit(run_id,State.SPEAKING); self.sig_status.emit(run_id,"Speaking…  •  click to interrupt")
                 if self._tts is None: self._tts=TTS()
                 spoke=self._tts.speak(action.message)
                 if not self._is_current(run_id) or not spoke: return
@@ -186,7 +197,10 @@ class FloatingButton(QWidget):
             if self._gemini is None: self._gemini=GeminiClient()
             answer=self._gemini.ask_with_screenshot(jpeg_bytes,user_text)
             if not self._is_current(run_id): return
-            self.sig_response.emit(run_id,answer); self.sig_state.emit(run_id,State.SPEAKING); self.sig_status.emit(run_id,"Speaking…  •  click to interrupt")
+            self.sig_response.emit(run_id,answer)
+            self._wait_for_response_ui(run_id)
+            if not self._is_current(run_id): return
+            self.sig_state.emit(run_id,State.SPEAKING); self.sig_status.emit(run_id,"Speaking…  •  click to interrupt")
             if self._tts is None: self._tts=TTS()
             spoke=self._tts.speak(answer)
             if not self._is_current(run_id) or not spoke: return
@@ -194,6 +208,7 @@ class FloatingButton(QWidget):
             if self._is_current(run_id): self.sig_error.emit(run_id,str(e)[:200])
         finally:
             if self._is_current(run_id): self.sig_finished.emit(run_id)
+            self._response_ready.pop(run_id, None)
 
     def _on_state(self,run_id,state):
         if self._is_current(run_id): self.state=state; self.update()
@@ -204,7 +219,10 @@ class FloatingButton(QWidget):
     def _on_user(self,run_id,text):
         if self._is_current(run_id): self.response_popup.add_user_message(text,self.pos())
     def _on_response(self,run_id,text):
-        if self._is_current(run_id): self.response_popup.show_response(text,self.pos())
+        if self._is_current(run_id):
+            self.response_popup.show_response(text,self.pos())
+            ready=self._response_ready.get(run_id)
+            if ready is not None: ready.set()
     def _on_error(self,run_id,text):
         if not self._is_current(run_id): return
         self.status_popup.show_message(f"⚠️ {text}",self.pos(),duration_ms=3500); self.state=State.ERROR; self.update()
