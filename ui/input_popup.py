@@ -62,14 +62,18 @@ class InputPopup(QFrame):
         self.raise_()
         self.activateWindow()
         self.edit.setFocus()
+        self.edit.selectAll()
 
     def _submit(self):
         text = self.edit.text().strip()
         if not text:
             return
-        self.hide()
+        # Keep the input surface open so it can be reused for the next question.
         self.edit.clear()
         self.submitted.emit(text)
+        self.raise_()
+        self.activateWindow()
+        self.edit.setFocus()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
