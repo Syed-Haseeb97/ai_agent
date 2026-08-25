@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 from typing import Optional
 
 try:
@@ -13,7 +15,11 @@ except ImportError:
 from dotenv import load_dotenv
 load_dotenv()
 
-SYSTEM_PROMPT = """You are a helpful desktop AI assistant that can see the user's current screen through a screenshot.
+ROOT = Path(__file__).resolve().parent.parent
+MEMORY_FILE = ROOT / "memory.json"
+PREFS_FILE = ROOT / "preferences.json"
+
+BASE_PROMPT = """You are Ruby, a helpful desktop AI assistant that can see the user's current screen through a screenshot.
 - Understand the user's request first, then answer it directly.
 - Use the screenshot when it is relevant; do not invent details that are not visible.
 - Give enough useful information to fully answer the question. Do not artificially limit answers to a fixed sentence count.
@@ -21,7 +27,26 @@ SYSTEM_PROMPT = """You are a helpful desktop AI assistant that can see the user'
 - Prefer practical, actionable answers over generic advice.
 - If something is unclear or unreadable on the screen, say exactly what is unclear.
 - Never claim that you performed a Windows action unless the local action executor actually performed it.
-- Be friendly and direct."""
+- Be friendly and direct.
+"""
+
+
+def _load_context() -> str:
+    parts = [BASE_PROMPT]
+    try:
+        memories = json.loads(MEMORY_FILE.read_text(encoding="utf-8"))
+        if memories:
+            parts.append("Useful user memories (only use when relevant):\n" + "\n".join(f"- {m.get('text','')}" for m in memories[-20:]))
+    except Exception:
+        pass
+    try:
+        prefs = json.loads(PREFS_FILE.read_text(encoding="utf-8"))
+        personality = prefs.get("personality")
+        if personality:
+            parts.append(f"Preferred response style: {personality}.")
+    except Exception:
+        pass
+    return "\n".join(parts)
 
 
 class GeminiClient:
@@ -37,7 +62,7 @@ class GeminiClient:
         last_error = None
         for name in model_candidates:
             try:
-                self.model = genai.GenerativeModel(model_name=name, system_instruction=SYSTEM_PROMPT)
+                self.model = genai.GenerativeModel(model_name=name, system_instruction=_load_context())
                 break
             except Exception as e:
                 last_error = e
@@ -50,10 +75,7 @@ class GeminiClient:
         image_part = {"mime_type": "image/jpeg", "data": jpeg_bytes}
         prompt = f"User said: {user_text.strip()}"
         try:
-            response = self.model.generate_content(
-                [image_part, prompt],
-                generation_config={"temperature": 0.4, "max_output_tokens": 900},
-            )
+            response = self.model.generate_content([image_part, prompt], generation_config={"temperature": 0.4, "max_output_tokens": 900})
             if response and response.text:
                 return response.text.strip()
             return "I received an empty reply from the model. Please try again."
