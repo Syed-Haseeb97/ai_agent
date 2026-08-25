@@ -6,9 +6,8 @@ Shows "Listening…", "Thinking…", etc.
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, QTimer, QPoint
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QColor
 from PyQt6.QtWidgets import QLabel, QWidget, QVBoxLayout, QGraphicsDropShadowEffect
-from PyQt6.QtGui import QColor
 
 
 class StatusPopup(QWidget):
@@ -51,6 +50,12 @@ class StatusPopup(QWidget):
         self._hide_timer.timeout.connect(self.hide)
 
     def show_message(self, text: str, near: QPoint, duration_ms: int = 0):
+        # Empty status is an explicit request to hide the popup.
+        if not text or not text.strip():
+            self.hide_popup()
+            return
+
+        self._hide_timer.stop()
         self.label.setText(text)
         self.adjustSize()
         # Position just below-left of the button
