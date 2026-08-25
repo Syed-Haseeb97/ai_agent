@@ -1,6 +1,9 @@
 """
 Animated circular always-on-top AI button and interaction pipeline.
-States: idle -> listening -> thinking -> speaking -> error
+States: idle -> listening -> thinking -> speaking -> error.
+
+Each interaction has a monotonically increasing run id. Old queued UI events
+are ignored so an earlier answer can never overwrite the current one.
 """
 
 from __future__ import annotations
@@ -30,8 +33,6 @@ class State(Enum):
 
 
 class FloatingButton(QWidget):
-    # Every signal carries a run id. UI handlers ignore events from an older
-    # interaction, which prevents an old answer from replacing a new answer.
     sig_status = pyqtSignal(int, str)
     sig_response = pyqtSignal(int, str)
     sig_state = pyqtSignal(int, object)
@@ -69,8 +70,6 @@ class FloatingButton(QWidget):
         self.sig_error.connect(self._on_error)
         self.sig_finished.connect(self._on_finished)
 
-        # Smooth 60-ish FPS animation. The button always has subtle motion;
-        # each state changes the motion style.
         self._anim_timer = QTimer(self)
         self._anim_timer.timeout.connect(self._animate)
         self._anim_timer.start(16)
@@ -85,7 +84,7 @@ class FloatingButton(QWidget):
         self.tray = QSystemTrayIcon(self)
         self.tray.setToolTip("AI Screen Assistant")
         menu = QMenu()
-        menu.addAction("Ask (same as click)", self.trigger)
+        menu.addAction("Ask / Interrupt (same as click)", self.trigger)
         menu.addAction("Show / Hide button", self._toggle_visible)
         menu.addSeparator()
         menu.addAction("Quit", QApplication.instance().quit)
@@ -95,14 +94,12 @@ class FloatingButton(QWidget):
     def _toggle_visible(self):
         self.setVisible(not self.isVisible())
 
-    # ── Animated painting ─────────────────────────────────────
     def paintEvent(self, _event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         cx = cy = 39.0
         pulse = (math.sin(self._phase * 2.0) + 1.0) / 2.0
-
         palettes = {
             State.IDLE: ((35, 38, 52), (120, 92, 255)),
             State.LISTENING: ((15, 65, 52), (45, 230, 145)),
@@ -114,10 +111,7 @@ class FloatingButton(QWidget):
         accent = QColor(*accent_rgb)
         base = QColor(*base_rgb)
 
-        # Animated outer aura.
-        aura = 4.0 + pulse * 5.0
-        if self.state != State.IDLE:
-            aura += 3.0
+        aura = 4.0 + pulse * 5.0 + (3.0 if self.state != State.IDLE else 0.0)
         glow = QRadialGradient(cx, cy, 39 + aura)
         glow.setColorAt(0.48, QColor(accent.red(), accent.green(), accent.blue(), 0))
         glow.setColorAt(0.72, QColor(accent.red(), accent.green(), accent.blue(), 35 + int(45 * pulse)))
@@ -127,8 +121,6 @@ class FloatingButton(QWidget):
         p.setBrush(QBrush(glow))
         p.drawEllipse(QRectF(0, 0, 78, 78))
 
-        # Two soft animated rings make the idle button feel alive. Active
-        # states rotate them faster.
         speed = 0.8 if self.state == State.IDLE else 2.4
         for i, radius in enumerate((31.5, 35.0)):
             alpha = 42 if i == 0 else 22
@@ -138,9 +130,7 @@ class FloatingButton(QWidget):
             p.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), alpha), 1.4))
             p.drawEllipse(QRectF(cx - radius - offset, cy - radius + offset, (radius + offset) * 2, (radius - offset) * 2))
 
-        # Main glass-like sphere.
-        hover_scale = 1.5 if self._hover else 0.0
-        r = 28.0 + hover_scale
+        r = 29.5 if self._hover else 28.0
         grad = QRadialGradient(cx - 9, cy - 11, 43)
         grad.setColorAt(0.0, QColor(accent.red(), accent.green(), accent.blue(), 245))
         grad.setColorAt(0.42, QColor(min(255, accent.red() + 20), min(255, accent.green() + 20), min(255, accent.blue() + 20), 235))
@@ -149,24 +139,19 @@ class FloatingButton(QWidget):
         p.setPen(QPen(QColor(255, 255, 255, 75), 1.2))
         p.drawEllipse(QRectF(cx - r, cy - r, r * 2, r * 2))
 
-        # Moving highlight arc.
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.setPen(QPen(QColor(255, 255, 255, 115), 2.0))
         p.drawArc(QRectF(cx - r + 3, cy - r + 3, (r - 3) * 2, (r - 3) * 2), int((-self._phase * 35) * 16), 80 * 16)
 
-        # State-specific orbit dots.
         dot_count = {State.IDLE: 1, State.LISTENING: 3, State.THINKING: 4, State.SPEAKING: 5, State.ERROR: 2}[self.state]
-        dot_radius = 2.0
-        orbit = 31.5
         for i in range(dot_count):
             a = self._phase * (1.5 if self.state != State.IDLE else 0.5) + (2 * math.pi * i / dot_count)
-            dx = cx + math.cos(a) * orbit
-            dy = cy + math.sin(a) * orbit
+            dx = cx + math.cos(a) * 31.5
+            dy = cy + math.sin(a) * 31.5
             p.setBrush(QBrush(QColor(255, 255, 255, 120 + int(80 * pulse))))
             p.setPen(Qt.PenStyle.NoPen)
-            p.drawEllipse(QRectF(dx - dot_radius, dy - dot_radius, dot_radius * 2, dot_radius * 2))
+            p.drawEllipse(QRectF(dx - 2, dy - 2, 4, 4))
 
-        # Clean AI mark.
         p.setPen(QColor(255, 255, 255, 245))
         p.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
         p.drawText(QRectF(cx - r, cy - r, r * 2, r * 2), Qt.AlignmentFlag.AlignCenter, "AI")
@@ -175,7 +160,6 @@ class FloatingButton(QWidget):
         self._phase += 0.055
         self.update()
 
-    # ── Hover ─────────────────────────────────────────────────
     def enterEvent(self, event):
         self._hover = True
         self.update()
@@ -186,7 +170,6 @@ class FloatingButton(QWidget):
         self.update()
         super().leaveEvent(event)
 
-    # ── Mouse / drag ──────────────────────────────────────────
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
@@ -206,21 +189,37 @@ class FloatingButton(QWidget):
             self._drag_pos = None
             event.accept()
 
-    # ── Interaction ───────────────────────────────────────────
+    def _next_run(self) -> int:
+        self._run_id += 1
+        return self._run_id
+
     def trigger(self):
+        # Barge-in: clicking or pressing the hotkey while speaking stops the
+        # current audio and immediately starts listening for a new question.
+        if self._busy and self.state == State.SPEAKING:
+            if self._tts is not None:
+                self._tts.stop()
+            self._next_run()  # invalidate the old pipeline
+            self._busy = False
+            self.status_popup.hide_popup()
+            self.response_popup.hide_popup()
+
+        # Do not start a second microphone/Gemini pipeline while one is still
+        # listening/thinking. A second microphone worker cannot be safely
+        # cancelled with SpeechRecognition. Speaking is the explicit interrupt
+        # point.
         if self._busy:
             return
 
+        run_id = self._next_run()
         self._busy = True
-        self._run_id += 1
-        run_id = self._run_id
-
-        # Clear the previous card immediately in the UI thread.
         self.status_popup.hide_popup()
         self.response_popup.hide_popup()
         self.update()
-
         threading.Thread(target=self._pipeline, args=(run_id,), daemon=True).start()
+
+    def _is_current(self, run_id: int) -> bool:
+        return run_id == self._run_id
 
     def _pipeline(self, run_id: int):
         try:
@@ -230,6 +229,8 @@ class FloatingButton(QWidget):
                 self._listener = VoiceListener()
             user_text = self._listener.listen()
 
+            if not self._is_current(run_id):
+                return
             if not user_text:
                 self.sig_error.emit(run_id, "I didn’t catch that. Try again?")
                 return
@@ -238,27 +239,37 @@ class FloatingButton(QWidget):
             self.sig_status.emit(run_id, "Thinking…")
             jpeg_bytes, _ = capture_primary_screen()
 
+            if not self._is_current(run_id):
+                return
             if self._gemini is None:
                 self._gemini = GeminiClient()
             answer = self._gemini.ask_with_screenshot(jpeg_bytes, user_text)
 
-            self.sig_state.emit(run_id, State.SPEAKING)
-            self.sig_status.emit(run_id, "Speaking…")
-            if self._tts is None:
-                self._tts = TTS()
-            self._tts.speak(answer)
+            if not self._is_current(run_id):
+                return
 
-            # Only this run can publish this answer.
+            # IMPORTANT: update the card immediately when the current answer
+            # arrives, before TTS starts. The user should never see answer N-1
+            # while answer N is being spoken.
             self.sig_response.emit(run_id, answer)
 
-        except Exception as e:
-            self.sig_error.emit(run_id, str(e)[:200])
-        finally:
-            self.sig_finished.emit(run_id)
+            self.sig_state.emit(run_id, State.SPEAKING)
+            self.sig_status.emit(run_id, "Speaking…  •  click to interrupt")
+            if self._tts is None:
+                self._tts = TTS()
+            spoke = self._tts.speak(answer)
 
-    # ── UI-thread handlers ────────────────────────────────────
-    def _is_current(self, run_id: int) -> bool:
-        return run_id == self._run_id
+            if not self._is_current(run_id):
+                return
+            if not spoke:
+                return
+
+        except Exception as e:
+            if self._is_current(run_id):
+                self.sig_error.emit(run_id, str(e)[:200])
+        finally:
+            if self._is_current(run_id):
+                self.sig_finished.emit(run_id)
 
     def _on_state(self, run_id: int, state: State):
         if not self._is_current(run_id):
@@ -277,7 +288,6 @@ class FloatingButton(QWidget):
     def _on_response(self, run_id: int, text: str):
         if not self._is_current(run_id):
             return
-        # Replace, never append, and only accept the newest interaction.
         self.response_popup.hide_popup()
         self.response_popup.show_response(text, self.pos())
 
@@ -286,6 +296,7 @@ class FloatingButton(QWidget):
             return
         self.status_popup.hide_popup()
         self.state = State.ERROR
+        self.update()
         self.response_popup.hide_popup()
         self.response_popup.show_response(f"⚠️ {text}", self.pos(), auto_ms=8000)
         QTimer.singleShot(2500, lambda rid=run_id: self._return_idle(rid))
