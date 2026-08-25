@@ -15,7 +15,6 @@ from PyQt6.QtGui import (
     QBrush,
     QPen,
     QRadialGradient,
-    QPainterPath,
     QFont,
 )
 from PyQt6.QtWidgets import QWidget, QSystemTrayIcon, QMenu, QApplication
@@ -172,6 +171,13 @@ class FloatingButton(QWidget):
     def trigger(self):
         if self._busy:
             return
+
+        # Always clear/hide UI from the previous interaction before starting
+        # a new one. This prevents a previous answer from remaining visible
+        # while the next question is being processed.
+        self.status_popup.hide_popup()
+        self.response_popup.hide_popup()
+
         self._busy = True
         threading.Thread(target=self._pipeline, daemon=True).start()
 
@@ -198,17 +204,26 @@ class FloatingButton(QWidget):
                 self._gemini = GeminiClient()
             answer = self._gemini.ask_with_screenshot(jpeg_bytes, user_text)
 
-            # 4. Show + speak
-            self.sig_response.emit(answer)
+            # 4. Speak
+            # Show the Speaking state BEFORE TTS. The status is explicitly
+            # hidden in finally after speak() returns, so it cannot get stuck.
             self.sig_state.emit(State.SPEAKING)
             self.sig_status.emit("Speaking…")
             if self._tts is None:
                 self._tts = TTS()
             self._tts.speak(answer)
 
+            # Update the response after TTS has completed. This also avoids
+            # queued signal ordering causing the Speaking popup to reappear
+            # after the response handler hides it.
+            self.sig_response.emit(answer)
+
         except Exception as e:
             self.sig_error.emit(str(e)[:200])
         finally:
+            # This signal is intentionally emitted after TTS and after any
+            # error, so the status popup cannot remain stuck on Speaking.
+            self.sig_status.emit("")
             self.sig_state.emit(State.IDLE)
             self._busy = False
 
@@ -221,7 +236,6 @@ class FloatingButton(QWidget):
         self.status_popup.show_message(text, self.pos())
 
     def _on_response(self, text: str):
-        self.status_popup.hide_popup()
         self.response_popup.show_response(text, self.pos())
 
     def _on_error(self, text: str):
