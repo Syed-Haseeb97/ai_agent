@@ -1,22 +1,16 @@
 """
-Circular always-on-top floating button that owns the full interaction pipeline.
-States: idle → listening → thinking → speaking → error
+Animated circular always-on-top AI button and interaction pipeline.
+States: idle -> listening -> thinking -> speaking -> error
 """
 
 from __future__ import annotations
 
+import math
 import threading
 from enum import Enum, auto
 
 from PyQt6.QtCore import Qt, QPoint, QTimer, pyqtSignal, QRectF
-from PyQt6.QtGui import (
-    QPainter,
-    QColor,
-    QBrush,
-    QPen,
-    QRadialGradient,
-    QFont,
-)
+from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QRadialGradient, QFont
 from PyQt6.QtWidgets import QWidget, QSystemTrayIcon, QMenu, QApplication
 
 from ui.status_popup import StatusPopup
@@ -36,11 +30,13 @@ class State(Enum):
 
 
 class FloatingButton(QWidget):
-    # Signals to talk safely from background thread → UI thread
-    sig_status = pyqtSignal(str)
-    sig_response = pyqtSignal(str)
-    sig_state = pyqtSignal(object)  # State
-    sig_error = pyqtSignal(str)
+    # Every signal carries a run id. UI handlers ignore events from an older
+    # interaction, which prevents an old answer from replacing a new answer.
+    sig_status = pyqtSignal(int, str)
+    sig_response = pyqtSignal(int, str)
+    sig_state = pyqtSignal(int, object)
+    sig_error = pyqtSignal(int, str)
+    sig_finished = pyqtSignal(int)
 
     def __init__(self):
         super().__init__()
@@ -50,15 +46,19 @@ class FloatingButton(QWidget):
             | Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(68, 68)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setFixedSize(78, 78)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self.state = State.IDLE
         self._drag_pos: QPoint | None = None
         self._busy = False
+        self._run_id = 0
+        self._phase = 0.0
+        self._hover = False
 
-        # Position top-right with small margin
         screen = QApplication.primaryScreen().availableGeometry()
-        self.move(screen.right() - 90, 40)
+        self.move(screen.right() - 100, 34)
 
         self.status_popup = StatusPopup()
         self.response_popup = ResponsePopup()
@@ -67,24 +67,22 @@ class FloatingButton(QWidget):
         self.sig_response.connect(self._on_response)
         self.sig_state.connect(self._on_state)
         self.sig_error.connect(self._on_error)
+        self.sig_finished.connect(self._on_finished)
 
-        # Breathing animation for idle
-        self._breath = 0.0
-        self._breath_dir = 1
+        # Smooth 60-ish FPS animation. The button always has subtle motion;
+        # each state changes the motion style.
         self._anim_timer = QTimer(self)
         self._anim_timer.timeout.connect(self._animate)
-        self._anim_timer.start(40)
+        self._anim_timer.start(16)
 
         self._init_tray()
 
-        # Lazy init of heavy objects
         self._listener: VoiceListener | None = None
         self._tts: TTS | None = None
         self._gemini: GeminiClient | None = None
 
     def _init_tray(self):
         self.tray = QSystemTrayIcon(self)
-        # Simple generated icon would be nicer; for MVP we use text fallback
         self.tray.setToolTip("AI Screen Assistant")
         menu = QMenu()
         menu.addAction("Ask (same as click)", self.trigger)
@@ -97,56 +95,98 @@ class FloatingButton(QWidget):
     def _toggle_visible(self):
         self.setVisible(not self.isVisible())
 
-    # ── Painting ──────────────────────────────────────────────
+    # ── Animated painting ─────────────────────────────────────
     def paintEvent(self, _event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        colors = {
-            State.IDLE: (QColor(40, 40, 48), QColor(90, 90, 110)),
-            State.LISTENING: (QColor(20, 90, 50), QColor(40, 200, 100)),
-            State.THINKING: (QColor(20, 50, 100), QColor(60, 130, 255)),
-            State.SPEAKING: (QColor(70, 30, 100), QColor(180, 90, 255)),
-            State.ERROR: (QColor(100, 20, 20), QColor(220, 60, 60)),
+        cx = cy = 39.0
+        pulse = (math.sin(self._phase * 2.0) + 1.0) / 2.0
+
+        palettes = {
+            State.IDLE: ((35, 38, 52), (120, 92, 255)),
+            State.LISTENING: ((15, 65, 52), (45, 230, 145)),
+            State.THINKING: ((20, 45, 85), (70, 150, 255)),
+            State.SPEAKING: ((72, 30, 100), (205, 100, 255)),
+            State.ERROR: ((100, 22, 28), (255, 75, 90)),
         }
-        base, accent = colors.get(self.state, colors[State.IDLE])
+        base_rgb, accent_rgb = palettes[self.state]
+        accent = QColor(*accent_rgb)
+        base = QColor(*base_rgb)
 
-        # Soft outer glow
-        glow_alpha = int(50 + 40 * abs(self._breath)) if self.state == State.IDLE else 90
-        glow = QRadialGradient(34, 34, 36)
-        glow.setColorAt(0.55, QColor(accent.red(), accent.green(), accent.blue(), 0))
-        glow.setColorAt(0.85, QColor(accent.red(), accent.green(), accent.blue(), glow_alpha))
+        # Animated outer aura.
+        aura = 4.0 + pulse * 5.0
+        if self.state != State.IDLE:
+            aura += 3.0
+        glow = QRadialGradient(cx, cy, 39 + aura)
+        glow.setColorAt(0.48, QColor(accent.red(), accent.green(), accent.blue(), 0))
+        glow.setColorAt(0.72, QColor(accent.red(), accent.green(), accent.blue(), 35 + int(45 * pulse)))
+        glow.setColorAt(0.92, QColor(accent.red(), accent.green(), accent.blue(), 8))
         glow.setColorAt(1.0, QColor(0, 0, 0, 0))
-        p.setBrush(QBrush(glow))
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawEllipse(0, 0, 68, 68)
+        p.setBrush(QBrush(glow))
+        p.drawEllipse(QRectF(0, 0, 78, 78))
 
-        # Main circle
-        grad = QRadialGradient(24, 22, 40)
-        grad.setColorAt(0, accent.lighter(130))
-        grad.setColorAt(1, base)
+        # Two soft animated rings make the idle button feel alive. Active
+        # states rotate them faster.
+        speed = 0.8 if self.state == State.IDLE else 2.4
+        for i, radius in enumerate((31.5, 35.0)):
+            alpha = 42 if i == 0 else 22
+            angle = self._phase * speed * (1 if i == 0 else -1)
+            offset = math.sin(angle + i) * 1.5
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), alpha), 1.4))
+            p.drawEllipse(QRectF(cx - radius - offset, cy - radius + offset, (radius + offset) * 2, (radius - offset) * 2))
+
+        # Main glass-like sphere.
+        hover_scale = 1.5 if self._hover else 0.0
+        r = 28.0 + hover_scale
+        grad = QRadialGradient(cx - 9, cy - 11, 43)
+        grad.setColorAt(0.0, QColor(accent.red(), accent.green(), accent.blue(), 245))
+        grad.setColorAt(0.42, QColor(min(255, accent.red() + 20), min(255, accent.green() + 20), min(255, accent.blue() + 20), 235))
+        grad.setColorAt(1.0, base)
         p.setBrush(QBrush(grad))
-        p.setPen(QPen(QColor(255, 255, 255, 30), 1.5))
-        p.drawEllipse(6, 6, 56, 56)
+        p.setPen(QPen(QColor(255, 255, 255, 75), 1.2))
+        p.drawEllipse(QRectF(cx - r, cy - r, r * 2, r * 2))
 
-        # Center label
-        p.setPen(QColor(255, 255, 255, 230))
-        font = QFont("Segoe UI", 11, QFont.Weight.Bold)
-        p.setFont(font)
-        p.drawText(QRectF(6, 6, 56, 56), Qt.AlignmentFlag.AlignCenter, "AI")
+        # Moving highlight arc.
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(QColor(255, 255, 255, 115), 2.0))
+        p.drawArc(QRectF(cx - r + 3, cy - r + 3, (r - 3) * 2, (r - 3) * 2), int((-self._phase * 35) * 16), 80 * 16)
+
+        # State-specific orbit dots.
+        dot_count = {State.IDLE: 1, State.LISTENING: 3, State.THINKING: 4, State.SPEAKING: 5, State.ERROR: 2}[self.state]
+        dot_radius = 2.0
+        orbit = 31.5
+        for i in range(dot_count):
+            a = self._phase * (1.5 if self.state != State.IDLE else 0.5) + (2 * math.pi * i / dot_count)
+            dx = cx + math.cos(a) * orbit
+            dy = cy + math.sin(a) * orbit
+            p.setBrush(QBrush(QColor(255, 255, 255, 120 + int(80 * pulse))))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(QRectF(dx - dot_radius, dy - dot_radius, dot_radius * 2, dot_radius * 2))
+
+        # Clean AI mark.
+        p.setPen(QColor(255, 255, 255, 245))
+        p.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        p.drawText(QRectF(cx - r, cy - r, r * 2, r * 2), Qt.AlignmentFlag.AlignCenter, "AI")
 
     def _animate(self):
-        if self.state == State.IDLE:
-            self._breath += 0.04 * self._breath_dir
-            if self._breath > 1.0:
-                self._breath = 1.0
-                self._breath_dir = -1
-            elif self._breath < 0.0:
-                self._breath = 0.0
-                self._breath_dir = 1
-            self.update()
+        self._phase += 0.055
+        self.update()
 
-    # ── Mouse ─────────────────────────────────────────────────
+    # ── Hover ─────────────────────────────────────────────────
+    def enterEvent(self, event):
+        self._hover = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hover = False
+        self.update()
+        super().leaveEvent(event)
+
+    # ── Mouse / drag ──────────────────────────────────────────
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
@@ -159,88 +199,107 @@ class FloatingButton(QWidget):
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            # If the mouse barely moved, treat as click
             if self._drag_pos is not None:
-                delta = (event.globalPosition().toPoint() - self.frameGeometry().topLeft() - self._drag_pos)
+                delta = event.globalPosition().toPoint() - self.frameGeometry().topLeft() - self._drag_pos
                 if abs(delta.x()) < 5 and abs(delta.y()) < 5:
                     self.trigger()
             self._drag_pos = None
             event.accept()
 
-    # ── Public trigger (also called by hotkey) ────────────────
+    # ── Interaction ───────────────────────────────────────────
     def trigger(self):
         if self._busy:
             return
 
-        # Always clear/hide UI from the previous interaction before starting
-        # a new one. This prevents a previous answer from remaining visible
-        # while the next question is being processed.
+        self._busy = True
+        self._run_id += 1
+        run_id = self._run_id
+
+        # Clear the previous card immediately in the UI thread.
         self.status_popup.hide_popup()
         self.response_popup.hide_popup()
+        self.update()
 
-        self._busy = True
-        threading.Thread(target=self._pipeline, daemon=True).start()
+        threading.Thread(target=self._pipeline, args=(run_id,), daemon=True).start()
 
-    def _pipeline(self):
+    def _pipeline(self, run_id: int):
         try:
-            # 1. Listen
-            self.sig_state.emit(State.LISTENING)
-            self.sig_status.emit("Listening…")
+            self.sig_state.emit(run_id, State.LISTENING)
+            self.sig_status.emit(run_id, "Listening…")
             if self._listener is None:
                 self._listener = VoiceListener()
             user_text = self._listener.listen()
 
             if not user_text:
-                self.sig_error.emit("I didn’t catch that. Try again?")
+                self.sig_error.emit(run_id, "I didn’t catch that. Try again?")
                 return
 
-            # 2. Capture screen
-            self.sig_state.emit(State.THINKING)
-            self.sig_status.emit("Thinking…")
+            self.sig_state.emit(run_id, State.THINKING)
+            self.sig_status.emit(run_id, "Thinking…")
             jpeg_bytes, _ = capture_primary_screen()
 
-            # 3. Gemini
             if self._gemini is None:
                 self._gemini = GeminiClient()
             answer = self._gemini.ask_with_screenshot(jpeg_bytes, user_text)
 
-            # 4. Speak
-            # Show the Speaking state BEFORE TTS. The status is explicitly
-            # hidden in finally after speak() returns, so it cannot get stuck.
-            self.sig_state.emit(State.SPEAKING)
-            self.sig_status.emit("Speaking…")
+            self.sig_state.emit(run_id, State.SPEAKING)
+            self.sig_status.emit(run_id, "Speaking…")
             if self._tts is None:
                 self._tts = TTS()
             self._tts.speak(answer)
 
-            # Update the response after TTS has completed. This also avoids
-            # queued signal ordering causing the Speaking popup to reappear
-            # after the response handler hides it.
-            self.sig_response.emit(answer)
+            # Only this run can publish this answer.
+            self.sig_response.emit(run_id, answer)
 
         except Exception as e:
-            self.sig_error.emit(str(e)[:200])
+            self.sig_error.emit(run_id, str(e)[:200])
         finally:
-            # This signal is intentionally emitted after TTS and after any
-            # error, so the status popup cannot remain stuck on Speaking.
-            self.sig_status.emit("")
-            self.sig_state.emit(State.IDLE)
-            self._busy = False
+            self.sig_finished.emit(run_id)
 
-    # ── Signal handlers (UI thread) ───────────────────────────
-    def _on_state(self, state: State):
+    # ── UI-thread handlers ────────────────────────────────────
+    def _is_current(self, run_id: int) -> bool:
+        return run_id == self._run_id
+
+    def _on_state(self, run_id: int, state: State):
+        if not self._is_current(run_id):
+            return
         self.state = state
         self.update()
 
-    def _on_status(self, text: str):
-        self.status_popup.show_message(text, self.pos())
+    def _on_status(self, run_id: int, text: str):
+        if not self._is_current(run_id):
+            return
+        if text:
+            self.status_popup.show_message(text, self.pos())
+        else:
+            self.status_popup.hide_popup()
 
-    def _on_response(self, text: str):
+    def _on_response(self, run_id: int, text: str):
+        if not self._is_current(run_id):
+            return
+        # Replace, never append, and only accept the newest interaction.
+        self.response_popup.hide_popup()
         self.response_popup.show_response(text, self.pos())
 
-    def _on_error(self, text: str):
+    def _on_error(self, run_id: int, text: str):
+        if not self._is_current(run_id):
+            return
         self.status_popup.hide_popup()
-        self.sig_state.emit(State.ERROR)
+        self.state = State.ERROR
+        self.response_popup.hide_popup()
         self.response_popup.show_response(f"⚠️ {text}", self.pos(), auto_ms=8000)
-        # Return to idle after a short moment
-        QTimer.singleShot(2500, lambda: self.sig_state.emit(State.IDLE))
+        QTimer.singleShot(2500, lambda rid=run_id: self._return_idle(rid))
+
+    def _return_idle(self, run_id: int):
+        if self._is_current(run_id):
+            self.state = State.IDLE
+            self.update()
+
+    def _on_finished(self, run_id: int):
+        if not self._is_current(run_id):
+            return
+        self.status_popup.hide_popup()
+        if self.state != State.ERROR:
+            self.state = State.IDLE
+            self.update()
+        self._busy = False
