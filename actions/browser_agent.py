@@ -1,33 +1,4 @@
-"""Generic browser task planner.
-
-This module deliberately contains no site/channel/video names. It turns natural
-language browser tasks into reusable browser primitives and lets Playwright
-inspect the current DOM before acting.
-
-Result contract
-----------------
-Every handler returns a BrowserTaskResult with two independent signals:
-
-* ``recognized`` - True the moment we're confident the text describes a
-  browser task, regardless of whether the underlying Playwright action
-  actually succeeded. Once a handler recognizes the command, ``execute()``
-  commits to that interpretation and returns immediately.
-* ``handled``    - True only if the browser action actually succeeded.
-
-This separation matters: previously, if a *recognized* browser command's
-Playwright execution failed for any reason (page not loaded, DOM selector
-changed, no active context yet, timeout, etc.), the handler simply returned
-``handled=False`` with no way to distinguish "this wasn't a browser command"
-from "this was a browser command that failed to execute". The caller
-(WindowsActionExecutor) treated both cases identically and fell through to
-the conversational Gemini path -- which then hallucinated instructions like
-"click the search bar and type...". That silent-failure-looks-like-no-match
-behavior was the real routing bug: it had nothing to do with which channel
-or search term was named.
-
-Now, any recognized-but-failed command gets an honest in-character error
-message instead of being silently handed to Gemini.
-"""
+"""Generic browser task planner."""
 from __future__ import annotations
 
 import re
@@ -35,7 +6,7 @@ from dataclasses import dataclass
 
 try:
     from actions.browser_actions import BrowserActions
-except ModuleNotFoundError:  # pragma: no cover - supports direct module execution
+except ModuleNotFoundError:
     from .browser_actions import BrowserActions
 
 
@@ -52,24 +23,14 @@ class BrowserAgent:
     SITE_ALIASES = {
         "youtube": "youtube", "yt": "youtube", "google": "google", "github": "github",
         "reddit": "reddit", "gmail": "gmail", "chatgpt": "chatgpt", "amazon": "amazon", "netflix": "netflix",
+        "spotify": "spotify", "linkedin": "linkedin", "linkdin": "linkedin",
     }
 
-    # "Search X on <this>" where <this> names the browser itself (or its
-    # default search engine) rather than a destination website. Without
-    # this, "search for linkedin on google chrome" fails to match the
-    # explicit on-site pattern (because "google chrome" isn't a known
-    # *site*) and falls through to a generic search that reuses whatever
-    # site the user was last on -- literally searching YouTube for the
-    # string "linkedin on google chrome".
     BROWSER_ALIASES = {
         "chrome": "google", "google chrome": "google", "browser": "google",
         "this browser": "google", "the browser": "google",
     }
 
-    # Desktop apps / OS surfaces that "open X" must never be mistaken for a
-    # website. This list intentionally contains only generic app/setting
-    # nouns (mirroring what WindowsActionExecutor already launches as native
-    # apps) -- never specific site/channel/video names.
     NON_WEB_KEYWORDS = (
         "chrome", "notepad", "calculator", "calc", "task manager", "taskmgr",
         "visual studio code", "vs code", "code", "command prompt", "cmd",
@@ -83,7 +44,7 @@ class BrowserAgent:
         self.browser = browser
 
     def execute(self, text: str) -> BrowserTaskResult:
-        original = text.strip()
+        original = text.strip().replace("linkdin", "linkedin").replace("plat his", "play his")
         q = original.lower()
         if not q:
             return BrowserTaskResult(False)
@@ -99,18 +60,17 @@ class BrowserAgent:
     def _compound(self, original: str) -> BrowserTaskResult:
         parts = [p.strip(" .") for p in re.split(
             r"\s+and\s+(?=(?:then\s+)?(?:play|watch|open|search|look\s+up|find|click|type|go|navigate|scroll|refresh|reload|close)\b)",
-            original,
-            flags=re.I,
+            original, flags=re.I
         ) if p.strip()]
         if len(parts) < 2:
             return BrowserTaskResult(False)
-        messages: list[str] = []
+        messages = []
         for part in parts:
             result = self.execute(part)
             if not result.recognized:
                 return BrowserTaskResult(False)
             if not result.handled:
-                return BrowserTaskResult(False, result.message or f"I got partway through that but couldn't finish: {part!r} failed.", recognized=True)
+                return BrowserTaskResult(False, result.message or f"I couldn't complete {part!r}.", recognized=True)
             if result.message:
                 messages.append(result.message)
         return BrowserTaskResult(True, " ".join(messages), recognized=True)
@@ -119,11 +79,7 @@ class BrowserAgent:
         if not re.search(r"\b(open|launch|start|visit|go to|take me to|show)\b", q):
             return BrowserTaskResult(False)
         if self._mentions_desktop_app(q):
-            # "open chrome" / "open notepad" / "open bluetooth settings" etc.
-            # are native OS actions, not websites -- let WindowsActionExecutor
-            # handle them instead of guessing a domain name for them.
             return BrowserTaskResult(False)
-
         site = self._site_in_text(q)
         if site:
             search_match = re.search(r"\b(?:and\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s*$", q)
@@ -138,40 +94,21 @@ class BrowserAgent:
             if ok:
                 return BrowserTaskResult(True, f"Opening {site}…", recognized=True)
             return BrowserTaskResult(False, f"I tried to open {site}, but the browser action failed.", recognized=True)
-
-        # Generic fallback: an arbitrary, user-supplied destination that
-        # isn't one of the few sites we have a direct URL for and isn't a
-        # desktop app either (e.g. "open linkedin"). Guess the obvious
-        # ".com" domain -- the same heuristic a person would use when
-        # typing it into an address bar -- without hardcoding the name.
-        generic = re.match(
-            r"^(?:please\s+)?(?:open|launch|start|visit|go\s+to|take\s+me\s+to|show)\s+(?:me\s+)?(?:the\s+)?(.+?)\s*$",
-            q, re.I,
-        )
+        generic = re.match(r"^(?:please\s+)?(?:open|launch|start|visit|go\s+to|take\s+me\s+to|show)\s+(?:me\s+)?(?:the\s+)?(.+?)\s*$", q, re.I)
         if not generic:
             return BrowserTaskResult(False)
         target = self._clean_term(generic.group(1))
         if not target or re.search(r"\b(search|look\s+up|find)\b", target):
             return BrowserTaskResult(False)
-        url = self._guess_url(target)
-        ok = self.browser.open_url(url)
+        ok = self.browser.open_url(self._guess_url(target))
         if ok:
             return BrowserTaskResult(True, f"Opening {target}…", recognized=True)
         return BrowserTaskResult(False, f"I tried to open {target}, but the browser action failed.", recognized=True)
 
     def _search(self, q: str) -> BrowserTaskResult:
-        # Note: group(2) is deliberately unrestricted (".+?") rather than a
-        # fixed site alternation, so destinations like "google chrome" (two
-        # words, and not itself a website) still get captured whole and can
-        # be resolved against SITE_ALIASES *or* BROWSER_ALIASES below --
-        # instead of "chrome" being left dangling and folded back into the
-        # search term (which used to make "search for X on google chrome"
-        # become a literal YouTube search for "X on google chrome").
         explicit = re.match(
-            r"^(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+(?:on|in)\s+"
-            r"(?:this\s+|my\s+|the\s+)?(.+?)(?:\s+(?:tab|browser|app))?\s*$",
-            q,
-            re.I,
+            r"^(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+(?:on|in)\s+(?:this\s+|my\s+|the\s+)?(.+?)(?:\s+(?:tab|browser|app))?\s*$",
+            q, re.I
         )
         if explicit:
             term = self._clean_term(explicit.group(1))
@@ -191,24 +128,19 @@ class BrowserAgent:
         ok = self.browser.search_current_page(term)
         if ok:
             return BrowserTaskResult(True, f"Searching for {term}…", recognized=True)
-        return BrowserTaskResult(False, f"I understood you want to search for {term}, but I couldn't do it in the current browser context. Try 'open youtube and search for {term}' to be explicit.", recognized=True)
+        return BrowserTaskResult(False, f"I understood you want to search for {term}, but I couldn't do it in the current browser context.", recognized=True)
 
     def _media(self, q: str) -> BrowserTaskResult:
         if not re.search(r"\b(play|watch|open)\b", q):
             return BrowserTaskResult(False)
         latest = re.search(
-            r"\b(?:play|watch|open)\s+(?:the\s+)?(?:latest|newest|most\s+recent)\s+"
-            r"(?:(?:video|upload)\s+)?(?:uploaded\s+by|posted\s+by|by|of|from|for)\s+(.+?)"
-            r"(?:\s+video)?\s*(?:on\s+(?:youtube|yt))?\s*$",
-            q,
-            re.I,
+            r"\b(?:play|watch|open)\s+(?:the\s+)?(?:latest|newest|most\s+recent)\s+(?:(?:video|upload)\s+)?(?:uploaded\s+by|posted\s+by|by|of|from|for)\s+(.+?)(?:\s+video)?\s*(?:on\s+(?:youtube|yt))?\s*$",
+            q, re.I
         )
         if not latest:
             latest = re.search(
-                r"\b(?:play|watch|open)\s+(?:the\s+)?(?:latest|newest|most\s+recent)\s+(.+?)\s+video"
-                r"(?:\s+on\s+(?:youtube|yt))?\s*$",
-                q,
-                re.I,
+                r"\b(?:play|watch|open)\s+(?:the\s+)?(?:latest|newest|most\s+recent)\s+(.+?)\s+video(?:\s+on\s+(?:youtube|yt))?\s*$",
+                q, re.I
             )
         if latest:
             topic = self._clean_term(latest.group(1))
@@ -216,7 +148,7 @@ class BrowserAgent:
             if ok:
                 return BrowserTaskResult(True, f"Playing the latest video for {topic}…" if topic else "Playing the latest video…", recognized=True)
             return BrowserTaskResult(False, f"I tried to play the latest video for {topic}, but the browser action failed." if topic else "I tried to play the latest video, but the browser action failed.", recognized=True)
-        if re.search(r"\b(?:its|the)\s+(?:latest|newest|most\s+recent)\s+video\b", q):
+        if re.search(r"\b(?:its|the|his|her)\s+(?:latest|newest|most\s+recent)\s+(?:uploaded\s+)?(?:video|upload)\b", q):
             ok = self.browser.play_latest_youtube_video()
             if ok:
                 return BrowserTaskResult(True, "Playing the latest video…", recognized=True)
@@ -285,7 +217,8 @@ class BrowserAgent:
         return {
             "youtube": "https://www.youtube.com", "google": "https://www.google.com", "github": "https://github.com",
             "reddit": "https://www.reddit.com", "gmail": "https://mail.google.com", "chatgpt": "https://chatgpt.com",
-            "amazon": "https://www.amazon.com", "netflix": "https://www.netflix.com",
+            "amazon": "https://www.amazon.com", "netflix": "https://www.netflix.com", "spotify": "https://open.spotify.com",
+            "linkedin": "https://www.linkedin.com",
         }.get(site, "https://www.google.com")
 
     @classmethod
