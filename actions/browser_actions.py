@@ -18,6 +18,7 @@ class BrowserActions:
     def __init__(self) -> None:
         self._playwright: Playwright | None = None
         self._context: BrowserContext | None = None
+        self._current_site: str | None = None
 
     @staticmethod
     def _chrome_path() -> str | None:
@@ -58,7 +59,9 @@ class BrowserActions:
 
     def open_url(self, url: str) -> bool:
         try:
-            self._page().goto(url, wait_until="domcontentloaded", timeout=30000)
+            page = self._page()
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            self._remember_site(page.url)
             return True
         except Exception:
             return False
@@ -70,6 +73,7 @@ class BrowserActions:
         site = site.lower()
         if site in {"youtube", "yt"}:
             url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(query)
+            site = "youtube"
         elif site == "google":
             url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(query)
         elif site == "github":
@@ -78,7 +82,11 @@ class BrowserActions:
             url = "https://www.reddit.com/search/?q=" + urllib.parse.quote_plus(query)
         else:
             url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(query)
-        return self.open_url(url)
+            site = "google"
+        ok = self.open_url(url)
+        if ok:
+            self._current_site = site
+        return ok
 
     def search_current_page(self, query: str) -> bool:
         query = query.strip()
@@ -87,14 +95,9 @@ class BrowserActions:
         try:
             page = self._page()
             current = page.url.lower()
-            if "youtube.com" in current:
-                return self.search(query, "youtube")
-            if "google.com" in current:
-                return self.search(query, "google")
-            if "github.com" in current:
-                return self.search(query, "github")
-            if "reddit.com" in current:
-                return self.search(query, "reddit")
+            site = self._site_from_url(current) or self._current_site
+            if site in {"youtube", "google", "github", "reddit"}:
+                return self.search(query, site)
         except Exception:
             pass
         return False
@@ -117,6 +120,7 @@ class BrowserActions:
             if query:
                 url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(query) + "&sp=CAISAhAB"
                 page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                self._current_site = "youtube"
                 page.wait_for_selector("a#video-title", timeout=15000)
             else:
                 page.wait_for_selector("a#video-title", timeout=15000)
@@ -249,6 +253,24 @@ class BrowserActions:
             return True
         except Exception:
             return False
+
+    @staticmethod
+    def _site_from_url(url: str) -> str | None:
+        lower = url.lower()
+        if "youtube.com" in lower or "youtu.be" in lower:
+            return "youtube"
+        if "google.com" in lower:
+            return "google"
+        if "github.com" in lower:
+            return "github"
+        if "reddit.com" in lower:
+            return "reddit"
+        return None
+
+    def _remember_site(self, url: str) -> None:
+        site = self._site_from_url(url)
+        if site:
+            self._current_site = site
 
     @staticmethod
     def _find_browser_window(preferred_title: str | None = None):
