@@ -1,66 +1,17 @@
-"""Runtime hardening for browser automation."""
+"""Small compatibility extensions for the generic browser agent.
+
+Core browser lifecycle and generic search live in browser_actions.py. This
+module only adds capabilities that genuinely need site-specific interaction.
+"""
 from __future__ import annotations
 
-import os
 import re
 import urllib.parse
-from pathlib import Path
-
-from playwright.sync_api import BrowserContext, sync_playwright
 
 from .browser_actions import BrowserActions
 from .browser_agent import BrowserAgent, BrowserTaskResult
 
-
-def _ensure_context(self: BrowserActions) -> BrowserContext:
-    if self._context is not None:
-        return self._context
-    self._playwright = sync_playwright().start()
-    base = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Ruby"
-    chrome_profile = base / "browser-profile"
-    chromium_profile = base / "browser-profile-chromium"
-    chrome_profile.mkdir(parents=True, exist_ok=True)
-    chromium_profile.mkdir(parents=True, exist_ok=True)
-    attempts = []
-    chrome = self._chrome_path()
-    if chrome:
-        attempts.append({"user_data_dir": str(chrome_profile), "headless": False, "no_viewport": True, "args": ["--start-maximized"], "executable_path": chrome})
-    attempts.append({"user_data_dir": str(chromium_profile), "headless": False, "no_viewport": True, "args": ["--start-maximized"]})
-    last_error = None
-    for kwargs in attempts:
-        try:
-            self._context = self._playwright.chromium.launch_persistent_context(**kwargs)
-            return self._context
-        except Exception as exc:
-            last_error = exc
-            self._context = None
-    try:
-        self._playwright.stop()
-    except Exception:
-        pass
-    self._playwright = None
-    raise RuntimeError(f"Unable to start a visible browser: {last_error}")
-
-
-def _search_current_page(self: BrowserActions, query: str) -> bool:
-    query = query.strip()
-    if not query:
-        return False
-    site = self._current_site
-    try:
-        if site == "linkedin":
-            page = self._page()
-            self._bring_to_front(page)
-            page.goto("https://www.linkedin.com/search/results/all/?keywords=" + urllib.parse.quote(query), wait_until="domcontentloaded", timeout=30000)
-            return True
-        if site == "spotify":
-            page = self._page()
-            self._bring_to_front(page)
-            page.goto("https://open.spotify.com/search/" + urllib.parse.quote(query), wait_until="domcontentloaded", timeout=30000)
-            return True
-    except Exception:
-        return False
-    return _ORIGINAL_SEARCH_CURRENT_PAGE(self, query)
+_ORIGINAL_EXECUTE = BrowserAgent.execute
 
 
 def _play_spotify_track(self: BrowserActions, track: str) -> bool:
@@ -73,8 +24,7 @@ def _play_spotify_track(self: BrowserActions, track: str) -> bool:
         page.goto("https://open.spotify.com/search/" + urllib.parse.quote(track), wait_until="domcontentloaded", timeout=30000)
         self._current_site = "spotify"
         page.wait_for_timeout(1500)
-        selectors = ("[data-testid='tracklist-row']", "div[data-testid='tracklist-row']", "a[href*='/track/']")
-        for selector in selectors:
+        for selector in ("[data-testid='tracklist-row']", "div[data-testid='tracklist-row']", "a[href*='/track/']"):
             try:
                 locator = page.locator(selector).first
                 if locator.count() and locator.is_visible():
@@ -92,13 +42,9 @@ def _play_spotify_track(self: BrowserActions, track: str) -> bool:
                 return True
         except Exception:
             pass
-        return False
     except Exception:
-        return False
-
-
-_ORIGINAL_EXECUTE = BrowserAgent.execute
-_ORIGINAL_SEARCH_CURRENT_PAGE = BrowserActions.search_current_page
+        pass
+    return False
 
 
 def _execute(self: BrowserAgent, text: str) -> BrowserTaskResult:
@@ -119,21 +65,12 @@ def _execute(self: BrowserAgent, text: str) -> BrowserTaskResult:
 
 
 def _generic_destination_url(target: str) -> str:
-    """Resolve arbitrary spoken website names without a site whitelist.
-
-    We deliberately do not maintain a growing table of website names here.
-    Google is used as a generic destination resolver; its 'I'm Feeling Lucky'
-    redirect normally lands on the official/relevant site for names such as
-    Notion, Gemini, Perplexity, Canva, Discord, Slack, or an arbitrary site
-    the user names. Known sites can still use their faster direct aliases.
-    """
+    """Resolve arbitrary spoken website names without a growing site whitelist."""
     target = re.sub(r"\s+", " ", target).strip()
     query = urllib.parse.quote_plus(f"{target} official website")
     return f"https://www.google.com/search?q={query}&btnI=1"
 
 
-BrowserActions._ensure_context = _ensure_context
-BrowserActions.search_current_page = _search_current_page
 BrowserActions.play_spotify_track = _play_spotify_track
 BrowserAgent._guess_url = staticmethod(_generic_destination_url)
 BrowserAgent.execute = _execute
