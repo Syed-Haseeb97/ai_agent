@@ -50,8 +50,6 @@ class TTS:
         self._stop_event.clear(); text = text.strip()
         if self._edge_available:
             try:
-                # ffplay can consume edge-tts audio chunks immediately instead
-                # of waiting for the complete MP3 file to be synthesized.
                 if shutil.which("ffplay"):
                     return self._speak_edge_stream(text)
                 return self._speak_edge_file(text)
@@ -62,7 +60,10 @@ class TTS:
     def _speak_edge_stream(self, text: str) -> bool:
         import edge_tts
 
-        process = subprocess.Popen(["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-i", "pipe:0"], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        process = subprocess.Popen(
+            ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-i", "pipe:0"],
+            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
         with self._process_lock: self._process = process
 
         async def feed() -> None:
@@ -70,18 +71,34 @@ class TTS:
             async for chunk in communicate.stream():
                 if self._stop_event.is_set(): break
                 if chunk.get("type") == "audio" and chunk.get("data") and process.stdin:
-                    process.stdin.write(chunk["data"]); process.stdin.flush()
+                    try:
+                        process.stdin.write(chunk["data"]); process.stdin.flush()
+                    except (BrokenPipeError, OSError):
+                        break
             if process.stdin:
                 try: process.stdin.close()
-                except Exception: pass
+                except (BrokenPipeError, OSError): pass
 
+        worker_error: list[BaseException] = []
+
+        def runner() -> None:
+            try:
+                asyncio.run(feed())
+            except BaseException as exc:
+                worker_error.append(exc)
+
+        worker = threading.Thread(target=runner, name="edge-tts-stream", daemon=True)
+        worker.start()
         try:
-            asyncio.run(feed())
-            while process.poll() is None:
+            while worker.is_alive():
                 if self._stop_event.wait(0.05):
-                    try: process.terminate()
-                    except Exception: pass
-                    return False
+                    if process.poll() is None:
+                        try: process.terminate()
+                        except Exception: pass
+                    break
+            worker.join(timeout=2.0)
+            if worker_error and not self._stop_event.is_set():
+                raise worker_error[0]
             return not self._stop_event.is_set()
         finally:
             with self._process_lock:
