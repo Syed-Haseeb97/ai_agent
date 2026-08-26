@@ -1,326 +1,139 @@
-"""Playwright-backed browser primitives used by Ruby's generic browser agent."""
+
+"""Explicit allowlist of safe Windows desktop and browser actions."""
 from __future__ import annotations
 
 import os
-import shutil
-import time
-import urllib.parse
+import re
+import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
-import pyautogui
-import pygetwindow as gw
-from playwright.sync_api import BrowserContext, Page, Playwright, sync_playwright
+try:
+    from ..features.advanced_features import AdvancedFeatures
+    from .browser_actions import BrowserActions
+    from .browser_agent import BrowserAgent
+except ImportError:  # pragma: no cover - fallback for non-package execution
+    try:
+        from ai_assistant.features.advanced_features import AdvancedFeatures
+        from ai_assistant.actions.browser_actions import BrowserActions
+        from ai_assistant.actions.browser_agent import BrowserAgent
+    except ImportError:
+        from ..features.advanced_features import AdvancedFeatures
+        from .browser_actions import BrowserActions
+        from .browser_agent import BrowserAgent
 
 
-class BrowserActions:
-    """Low-level browser operations. No user/site/channel names are hard-coded."""
+@dataclass(frozen=True)
+class ActionResult:
+    handled: bool
+    message: str = ""
 
-    def __init__(self) -> None:
-        self._playwright: Playwright | None = None
-        self._context: BrowserContext | None = None
-        self._current_site: str | None = None
 
-    @staticmethod
-    def _chrome_path() -> str | None:
-        candidates = [
-            os.environ.get("PROGRAMFILES", "") + r"\Google\Chrome\Application\chrome.exe",
-            os.environ.get("PROGRAMFILES(X86)", "") + r"\Google\Chrome\Application\chrome.exe",
-            os.environ.get("LOCALAPPDATA", "") + r"\Google\Chrome\Application\chrome.exe",
-        ]
-        for candidate in candidates:
-            if candidate and Path(candidate).exists():
-                return candidate
-        return shutil.which("chrome.exe")
+class WindowsActionExecutor:
+    """Execute known desktop actions and delegate browser tasks to the generic browser agent."""
 
-    def _ensure_context(self) -> BrowserContext:
-        if self._context is not None:
-            return self._context
-        self._playwright = sync_playwright().start()
-        profile = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Ruby" / "browser-profile"
-        profile.mkdir(parents=True, exist_ok=True)
-        executable = self._chrome_path()
-        kwargs = {"user_data_dir": str(profile), "headless": False, "no_viewport": True, "args": ["--start-maximized"]}
-        if executable:
-            kwargs["executable_path"] = executable
-        self._context = self._playwright.chromium.launch_persistent_context(**kwargs)
-        return self._context
+    SITE_ALIASES = {
+        "youtube": "https://www.youtube.com", "youtube.com": "https://www.youtube.com",
+        "github": "https://github.com", "github.com": "https://github.com",
+        "google": "https://www.google.com", "google.com": "https://www.google.com",
+        "gmail": "https://mail.google.com", "gmail.com": "https://mail.google.com",
+        "chatgpt": "https://chatgpt.com", "chatgpt.com": "https://chatgpt.com",
+        "reddit": "https://www.reddit.com", "reddit.com": "https://www.reddit.com",
+        "amazon": "https://www.amazon.com", "amazon.com": "https://www.amazon.com",
+        "netflix": "https://www.netflix.com", "netflix.com": "https://www.netflix.com",
+    }
 
-    def _page(self, url_hint: str | None = None) -> Page:
-        context = self._ensure_context()
-        pages = context.pages
-        if url_hint:
-            hint = url_hint.lower()
-            for page in reversed(pages):
-                if hint in page.url.lower():
-                    return page
-        if pages:
-            return pages[-1]
-        return context.new_page()
+    APP_PROCESSES = {
+        "google chrome": "chrome.exe", "chrome": "chrome.exe", "command prompt": "cmd.exe", "cmd": "cmd.exe",
+        "powershell": "powershell.exe", "power shell": "powershell.exe", "notepad": "notepad.exe",
+        "calculator": "calculatorapp.exe", "calc": "calculatorapp.exe", "task manager": "taskmgr.exe", "taskmgr": "taskmgr.exe",
+        "visual studio code": "code.exe", "vs code": "code.exe", "code": "code.exe",
+    }
 
-    def open_url(self, url: str) -> bool:
-        try:
-            page = self._page()
-            page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            self._remember_site(page.url)
-            return True
-        except Exception:
-            return False
+    def __init__(self):
+        self.advanced = AdvancedFeatures()
+        self.browser = BrowserActions()
+        self.browser_agent = BrowserAgent(self.browser)
 
-    def search(self, query: str, site: str = "youtube") -> bool:
-        query = query.strip()
-        if not query:
-            return False
-        site = site.lower()
-        if site in {"youtube", "yt"}:
-            url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(query)
-            site = "youtube"
-        elif site == "google":
-            url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(query)
-        elif site == "github":
-            url = "https://github.com/search?q=" + urllib.parse.quote_plus(query)
-        elif site == "reddit":
-            url = "https://www.reddit.com/search/?q=" + urllib.parse.quote_plus(query)
-        else:
-            url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(query)
-            site = "google"
-        ok = self.open_url(url)
-        if ok:
-            self._current_site = site
-        return ok
+    def try_execute(self, text: str) -> ActionResult:
+        original = text.strip(); q = original.lower()
+        if not q: return ActionResult(False)
 
-    def search_current_page(self, query: str) -> bool:
-        """Search the browser Ruby controls, falling back to the user's existing Chrome."""
-        query = query.strip()
-        if not query:
-            return False
-        try:
-            page = self._page()
-            current = page.url.lower()
-            site = self._site_from_url(current) or self._current_site
-            if site in {"youtube", "google", "github", "reddit"}:
-                return self.search(query, site)
-        except Exception:
-            pass
+        # Browser commands get first refusal. Natural-language browser tasks must
+        # never be intercepted by the older feature handlers and sent to Gemini.
+        result = self._handle_browser_command(original, q)
+        if result.handled: return result
 
-        # If Ruby's Playwright browser has no recognized page, use the already
-        # visible Chrome window rather than falling through to Gemini. This keeps
-        # natural commands useful with a browser the user already opened.
-        title = "youtube" if self._current_site == "youtube" else None
-        if self._current_site == "youtube":
-            return self._keyboard_search_existing_window(query, title)
-        return False
+        advanced = self.advanced.try_execute(original)
+        if advanced.handled: return ActionResult(True, advanced.message)
 
-    def play_youtube(self, query: str | None = None) -> bool:
-        try:
-            page = self._page("youtube")
-            if query:
-                self.search(query, "youtube")
-                page = self._page("youtube")
-                page.wait_for_selector("a#video-title", timeout=12000)
-            return self._click_first_video(page)
-        except Exception:
-            return False
+        open_words = r"\b(open|launch|start|show|bring up|go to|visit|take me to)\b"
+        close_words = r"\b(close|quit|exit|shut down|shut)\b"
+        result = self._handle_close_command(q, close_words)
+        if result.handled: return result
+        result = self._handle_site_command(q)
+        if result.handled: return result
+        if re.search(open_words + r".*\b(chrome|google chrome)\b", q): self._launch_app("Chrome", ["chrome.exe"]); return ActionResult(True, "Opening Chrome…")
+        if re.search(open_words + r".*\bcamera\b", q): os.startfile("microsoft.windows.camera:"); return ActionResult(True, "Opening Camera…")
+        if re.search(open_words + r".*\b(vs code|visual studio code|code)\b", q): self._launch_app("VS Code", ["code.exe"]); return ActionResult(True, "Opening VS Code…")
+        if re.search(open_words + r".*\b(task manager|taskmgr)\b", q): subprocess.Popen(["taskmgr.exe"], shell=False); return ActionResult(True, "Opening Task Manager…")
+        if re.search(open_words + r".*\b(calculator|calc)\b", q): subprocess.Popen(["calc.exe"], shell=False); return ActionResult(True, "Opening Calculator…")
+        if re.search(open_words + r".*\bnotepad\b", q): subprocess.Popen(["notepad.exe"], shell=False); return ActionResult(True, "Opening Notepad…")
+        if re.search(open_words + r".*\b(file explorer|explorer)\b", q): subprocess.Popen(["explorer.exe"], shell=False); return ActionResult(True, "Opening File Explorer…")
+        if re.search(open_words + r".*\b(command prompt|cmd)\b", q): subprocess.Popen(["cmd.exe"], shell=False); return ActionResult(True, "Opening Command Prompt…")
+        if re.search(open_words + r".*\b(powershell|power shell)\b", q): subprocess.Popen(["powershell.exe", "-NoProfile"], shell=False); return ActionResult(True, "Opening PowerShell…")
+        url_match = re.search(r"\b(?:open|go to|visit)\s+(https?://\S+|www\.\S+)", original, re.I)
+        if url_match:
+            url = url_match.group(1); url = "https://" + url if url.startswith("www.") else url
+            if self.browser.open_url(url): return ActionResult(True, f"Opening {url}…")
+            self._open_url(url); return ActionResult(True, f"Opening {url}…")
+        if re.search(r"\b(bluetooth)\b.*\b(on|enable|turn on)\b|\b(turn on|enable)\b.*\bbluetooth\b", q): os.startfile("ms-settings:bluetooth"); return ActionResult(True, "Opening Bluetooth settings…")
+        if re.search(r"\b(bluetooth)\b.*\b(off|disable|turn off)\b|\b(turn off|disable)\b.*\bbluetooth\b", q): os.startfile("ms-settings:bluetooth"); return ActionResult(True, "Opening Bluetooth settings so you can turn Bluetooth off…")
+        if re.search(open_words + r".*\b(wifi|wi-fi|network)\b", q): os.startfile("ms-settings:network"); return ActionResult(True, "Opening network settings…")
+        if re.search(open_words + r".*\b(sound|audio|volume)\b", q): os.startfile("ms-settings:sound"); return ActionResult(True, "Opening sound settings…")
+        if re.search(open_words + r".*\bbluetooth\b", q): os.startfile("ms-settings:bluetooth"); return ActionResult(True, "Opening Bluetooth settings…")
+        if re.search(r"\b(set|create|open|show)\b.*\b(alarm|alarms|clock)\b|\balarm\b.*\b\d{1,2}(:\d{2})?\b", q): os.startfile("ms-clock:alarms"); return ActionResult(True, "Opening Windows Alarms & Clock…")
+        if re.search(open_words + r".*\bdownloads\b", q): os.startfile(str(Path.home() / "Downloads")); return ActionResult(True, "Opening Downloads…")
+        if re.search(open_words + r".*\bdesktop\b", q): os.startfile(str(Path.home() / "Desktop")); return ActionResult(True, "Opening Desktop…")
+        return ActionResult(False)
 
-    def play_latest_youtube_video(self, query: str | None = None) -> bool:
-        """Search optionally, request newest-first results, then inspect the DOM and open the first video."""
-        try:
-            page = self._page("youtube")
-            if query:
-                url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(query) + "&sp=CAISAhAB"
-                page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                self._current_site = "youtube"
-                page.wait_for_selector("a#video-title", timeout=15000)
-            else:
-                page.wait_for_selector("a#video-title", timeout=15000)
-            return self._click_first_video(page)
-        except Exception:
-            return False
+    def _handle_browser_command(self, original: str, q: str) -> ActionResult:
+        result = self.browser_agent.execute(original)
+        if result.recognized:
+            # A recognized browser command is claimed here permanently, whether or
+            # not the underlying Playwright action succeeded. This is what stops
+            # execution failures from silently falling through to Gemini and
+            # coming back as hallucinated "click here" instructions: the router
+            # now always gives an honest, in-character answer for anything it
+            # positively identified as a browser task.
+            message = result.message or "Sorry, that browser action didn't go through."
+            return ActionResult(True, message)
+        return ActionResult(False)
+
+    def _handle_close_command(self, q: str, close_words: str) -> ActionResult:
+        for label, executable in sorted(self.APP_PROCESSES.items(), key=lambda item: -len(item[0])):
+            if re.search(close_words + rf".*\b{re.escape(label)}\b", q):
+                self._kill_process(executable); return ActionResult(True, f"Closing {label.title()}…")
+        return ActionResult(False)
+
+    def _handle_site_command(self, q: str) -> ActionResult:
+        aliases = sorted(self.SITE_ALIASES, key=len, reverse=True); site_pattern = "|".join(re.escape(a) for a in aliases)
+        match = re.search(r"\b(?:open|launch|start|show|go to|visit|take me to)\b\s+(?:google\s+chrome\s+and\s+)?(?:.*?\s+)?(" + site_pattern + r")\b", q)
+        if not match: return ActionResult(False)
+        alias = match.group(1).lower(); url = self.SITE_ALIASES[alias]
+        if self.browser.open_url(url): return ActionResult(True, f"Opening {alias}…")
+        self._open_url(url); return ActionResult(True, f"Opening {alias}…")
 
     @staticmethod
-    def _click_first_video(page: Page) -> bool:
-        candidates = [
-            page.locator("ytd-video-renderer a#video-title").first,
-            page.locator("ytd-rich-item-renderer a#video-title").first,
-            page.locator("a#video-title").first,
-        ]
-        for locator in candidates:
-            try:
-                if locator.count() and locator.is_visible():
-                    locator.click(timeout=7000)
-                    return True
-            except Exception:
-                continue
-        return False
-
-    def click_first_result(self) -> bool:
-        try:
-            page = self._page()
-            selectors = [
-                "ytd-video-renderer a#video-title",
-                "ytd-rich-item-renderer a#video-title",
-                "main a[href*='/watch']",
-                "main a[href*='/results/']",
-            ]
-            for selector in selectors:
-                locator = page.locator(selector).first
-                if locator.count() and locator.is_visible():
-                    locator.click(timeout=7000)
-                    return True
-        except Exception:
-            pass
-        return False
-
-    def pause_youtube(self) -> bool:
-        try:
-            page = self._page("youtube")
-            button = page.locator("button[aria-label*='Pause'], button[title*='Pause']").first
-            if button.count() and button.is_visible():
-                button.click(timeout=5000)
-                return True
-        except Exception:
-            pass
-        return False
-
-    def click_text(self, text: str) -> bool:
-        text = text.strip()
-        if not text:
-            return False
-        try:
-            page = self._page()
-            locators = [
-                page.get_by_role("button", name=text, exact=False).first,
-                page.get_by_role("link", name=text, exact=False).first,
-                page.get_by_text(text, exact=False).first,
-            ]
-            for locator in locators:
-                try:
-                    if locator.count() and locator.is_visible():
-                        locator.click(timeout=7000)
-                        return True
-                except Exception:
-                    continue
-        except Exception:
-            pass
-        return False
-
-    def type_text(self, text: str, target: str | None = None) -> bool:
-        try:
-            page = self._page()
-            if target:
-                locators = [
-                    page.get_by_role("textbox", name=target, exact=False).first,
-                    page.get_by_placeholder(target, exact=False).first,
-                    page.get_by_text(target, exact=False).first,
-                ]
-                for locator in locators:
-                    try:
-                        if locator.count() and locator.is_visible():
-                            locator.click(timeout=5000)
-                            locator.fill(text)
-                            return True
-                    except Exception:
-                        continue
-            page.keyboard.type(text)
-            return True
-        except Exception:
-            return False
-
-    def scroll(self, direction: str = "down") -> bool:
-        try:
-            page = self._page()
-            delta = 700 if direction == "down" else -700
-            page.mouse.wheel(0, delta)
-            return True
-        except Exception:
-            return False
-
-    def go_back(self) -> bool:
-        try:
-            self._page().go_back(wait_until="domcontentloaded", timeout=15000)
-            return True
-        except Exception:
-            return False
-
-    def go_forward(self) -> bool:
-        try:
-            self._page().go_forward(wait_until="domcontentloaded", timeout=15000)
-            return True
-        except Exception:
-            return False
-
-    def refresh(self) -> bool:
-        try:
-            self._page().reload(wait_until="domcontentloaded", timeout=15000)
-            return True
-        except Exception:
-            return False
-
-    def close_tab(self) -> bool:
-        try:
-            self._page().close()
-            return True
-        except Exception:
-            return False
+    def _open_url(url: str) -> None: os.startfile(url)
 
     @staticmethod
-    def _site_from_url(url: str) -> str | None:
-        lower = url.lower()
-        if "youtube.com" in lower or "youtu.be" in lower:
-            return "youtube"
-        if "google.com" in lower:
-            return "google"
-        if "github.com" in lower:
-            return "github"
-        if "reddit.com" in lower:
-            return "reddit"
-        return None
-
-    def _remember_site(self, url: str) -> None:
-        site = self._site_from_url(url)
-        if site:
-            self._current_site = site
+    def _launch_app(label: str, commands: list[str]) -> None:
+        for command in commands:
+            try: subprocess.Popen([command], shell=False); return
+            except FileNotFoundError: continue
+        subprocess.Popen(f'start "" "{label}"', shell=True)
 
     @staticmethod
-    def _find_browser_window(preferred_title: str | None = None):
-        titles = [t for t in gw.getAllTitles() if t]
-        preferred = (preferred_title or "").lower()
-        if preferred:
-            for title in titles:
-                if preferred in title.lower() and ("chrome" in title.lower() or "youtube" in title.lower()):
-                    windows = gw.getWindowsWithTitle(title)
-                    if windows:
-                        return windows[0]
-        for title in titles:
-            lower = title.lower()
-            if "chrome" in lower or "youtube" in lower:
-                windows = gw.getWindowsWithTitle(title)
-                if windows:
-                    return windows[0]
-        return None
-
-    def _keyboard_search_existing_window(self, query: str, preferred_title: str | None = None) -> bool:
-        window = self._find_browser_window(preferred_title)
-        if window is None:
-            return False
-        try:
-            if window.isMinimized:
-                window.restore()
-            window.activate()
-            time.sleep(0.15)
-            url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(query)
-            pyautogui.hotkey("ctrl", "l")
-            pyautogui.write(url, interval=0.005)
-            pyautogui.press("enter")
-            return True
-        except Exception:
-            return False
-
-    def shutdown(self) -> None:
-        try:
-            if self._context:
-                self._context.close()
-        finally:
-            self._context = None
-            if self._playwright:
-                self._playwright.stop()
-                self._playwright = None
+    def _kill_process(executable: str) -> None:
+        subprocess.run(["taskkill", "/IM", executable, "/F"], capture_output=True, text=True, check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
