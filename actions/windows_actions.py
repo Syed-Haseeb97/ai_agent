@@ -4,12 +4,12 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 
 from features.advanced_features import AdvancedFeatures
 from actions.browser_actions import BrowserActions
+from actions.browser_agent import BrowserAgent
 
 
 @dataclass(frozen=True)
@@ -19,7 +19,7 @@ class ActionResult:
 
 
 class WindowsActionExecutor:
-    """Execute only known, explicitly registered desktop/browser actions."""
+    """Execute known desktop actions and delegate browser tasks to the generic browser agent."""
 
     SITE_ALIASES = {
         "youtube": "https://www.youtube.com", "youtube.com": "https://www.youtube.com",
@@ -42,14 +42,17 @@ class WindowsActionExecutor:
     def __init__(self):
         self.advanced = AdvancedFeatures()
         self.browser = BrowserActions()
+        self.browser_agent = BrowserAgent(self.browser)
 
     def try_execute(self, text: str) -> ActionResult:
         original = text.strip(); q = original.lower()
         if not q: return ActionResult(False)
         advanced = self.advanced.try_execute(original)
         if advanced.handled: return ActionResult(True, advanced.message)
+
         result = self._handle_browser_command(original, q)
         if result.handled: return result
+
         open_words = r"\b(open|launch|start|show|bring up|go to|visit|take me to)\b"
         close_words = r"\b(close|quit|exit|shut down|shut)\b"
         result = self._handle_close_command(q, close_words)
@@ -81,61 +84,8 @@ class WindowsActionExecutor:
         return ActionResult(False)
 
     def _handle_browser_command(self, original: str, q: str) -> ActionResult:
-        youtube_query = self._extract_youtube_search(q)
-        if youtube_query and self.browser.search_current_tab(youtube_query, preferred_title="youtube"):
-            return ActionResult(True, f"Searching YouTube for {youtube_query}…")
-
-        # Contextual command: after a YouTube search, "play its latest video" means
-        # play the first result in the current YouTube results page.
-        if re.search(r"\b(?:play|watch|open)\s+(?:its\s+)?(?:latest|newest|most\s+recent)\s+video\b", q):
-            if self.browser.play_latest_youtube_video():
-                return ActionResult(True, "Playing the latest video…")
-
-        latest = re.search(r"\b(?:play|watch|open)\s+(?:the\s+)?(?:latest|newest|most\s+recent)\s+(.+?)\s+(?:video\s+)?(?:on\s+)?(?:youtube|yt)\b", q)
-        if latest:
-            topic = latest.group(1).strip(" .?!")
-            if topic and self.browser.play_latest_youtube_video(topic):
-                return ActionResult(True, f"Playing the latest {topic} video…")
-
-        # Natural variant: "play the latest Gooner Shells 2 video" while already on YouTube.
-        latest_any = re.search(r"\b(?:play|watch|open)\s+(?:the\s+)?(?:latest|newest|most\s+recent)\s+(.+?)\s+video\b", q)
-        if latest_any:
-            topic = latest_any.group(1).strip(" .?!")
-            if topic and self.browser.play_latest_youtube_video(topic):
-                return ActionResult(True, f"Playing the latest {topic} video…")
-
-        pause = re.search(r"\b(?:pause|stop)\s+(?:the\s+)?(?:youtube\s+)?video\b|\bpause\s+youtube\b", q)
-        if pause and self.browser.pause_youtube(): return ActionResult(True, "Pausing the YouTube video…")
-        if re.search(r"\b(?:go|navigate)\s+back\b", q) and self.browser.go_back(): return ActionResult(True, "Going back in the browser…")
-        if re.search(r"\b(?:go|navigate)\s+forward\b", q) and self.browser.go_forward(): return ActionResult(True, "Going forward in the browser…")
-        if re.search(r"\b(?:refresh|reload)\s+(?:the\s+)?(?:page|tab|browser)\b", q) and self.browser.refresh(): return ActionResult(True, "Refreshing the page…")
-        if re.search(r"\bclose\s+(?:this\s+)?(?:browser\s+)?tab\b", q) and self.browser.close_tab(): return ActionResult(True, "Closing the browser tab…")
-        click = re.search(r"\bclick\s+(?:on\s+)?(?:the\s+)?(.+?)\s*$", original, re.I)
-        if click:
-            target = click.group(1).strip(" .?!")
-            if target and self.browser.click_text(target): return ActionResult(True, f"Clicking {target}…")
-        search = re.search(r"\b(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+on\s+(youtube|yt|google)\b", q, re.I)
-        if search:
-            term, site = search.group(1).strip(" .?!"), search.group(2)
-            if self.browser.search(term, "youtube" if site == "yt" else site): return ActionResult(True, f"Searching {site} for {term}…")
-        current_search = re.search(r"\b(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s*$", q, re.I)
-        if current_search:
-            term = current_search.group(1).strip(" .?!")
-            if term and self.browser.search_current_page(term): return ActionResult(True, f"Searching for {term}…")
-        return ActionResult(False)
-
-    @staticmethod
-    def _extract_youtube_search(q: str) -> str | None:
-        patterns = (
-            r"\b(?:in|on)\s+(?:this\s+|my\s+)?(?:youtube|yt)(?:\s+tab)?\s+(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)(?:\s+and\s+please)?$",
-            r"\b(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+(?:on|in)\s+(?:this\s+|my\s+)?(?:youtube|yt)(?:\s+tab)?(?:\s+and\s+please)?$",
-        )
-        for pattern in patterns:
-            match = re.search(pattern, q, re.I)
-            if match:
-                query = match.group(1).strip(" .?!")
-                if query: return query
-        return None
+        result = self.browser_agent.execute(original)
+        return ActionResult(result.handled, result.message)
 
     def _handle_close_command(self, q: str, close_words: str) -> ActionResult:
         for label, executable in sorted(self.APP_PROCESSES.items(), key=lambda item: -len(item[0])):
@@ -148,12 +98,6 @@ class WindowsActionExecutor:
         match = re.search(r"\b(?:open|launch|start|show|go to|visit|take me to)\b\s+(?:google\s+chrome\s+and\s+)?(?:.*?\s+)?(" + site_pattern + r")\b", q)
         if not match: return ActionResult(False)
         alias = match.group(1).lower(); url = self.SITE_ALIASES[alias]
-        search_match = re.search(r"\b(?:search|look\s+up|find)\s+(?:for\s+)?(.+)$", q, re.I)
-        if search_match:
-            term = search_match.group(1).strip(" .?!")
-            if term and term not in {alias, alias.removesuffix(".com")}:
-                if self.browser.search(term, "youtube" if "youtube.com" in url else "google"):
-                    return ActionResult(True, f"Opening {alias} and searching for {term}…")
         if self.browser.open_url(url): return ActionResult(True, f"Opening {alias}…")
         self._open_url(url); return ActionResult(True, f"Opening {alias}…")
 
