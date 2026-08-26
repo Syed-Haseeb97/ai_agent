@@ -8,7 +8,7 @@ from enum import Enum, auto
 
 from PyQt6.QtCore import Qt, QPoint, QTimer, pyqtSignal, QRectF
 from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QRadialGradient, QFont
-from PyQt6.QtWidgets import QWidget, QSystemTrayIcon, QMenu, QApplication
+from PyQt6.QtWidgets import QWidget, QSystemTrayIcon, QMenu, QApplication, QPushButton
 
 from actions.windows_actions import WindowsActionExecutor
 from ui.status_popup import StatusPopup
@@ -42,7 +42,7 @@ class FloatingButton(QWidget):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.setFixedSize(78, 78)
+        self.setFixedSize(78, 112)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.state = State.IDLE
         self._drag_pos: QPoint | None = None
@@ -51,12 +51,38 @@ class FloatingButton(QWidget):
         self._response_ready: dict[int, threading.Event] = {}
         self._phase = 0.0
         self._hover = False
+        self._continuous_mode = False
 
         screen = QApplication.primaryScreen().availableGeometry()
         self.move(screen.right() - 100, 34)
         self.status_popup = StatusPopup()
         self.response_popup = ResponsePopup()
         self.action_executor = WindowsActionExecutor()
+
+        self.stop_listening_button = QPushButton("■  Stop", self)
+        self.stop_listening_button.setFixedSize(62, 24)
+        self.stop_listening_button.move(8, 84)
+        self.stop_listening_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.stop_listening_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.stop_listening_button.setStyleSheet("""
+            QPushButton {
+                background: rgba(28, 31, 43, 235);
+                color: rgba(255, 255, 255, 235);
+                border: 1px solid rgba(255, 255, 255, 70);
+                border-radius: 10px;
+                padding: 1px 7px;
+                font: 600 9px 'Segoe UI';
+            }
+            QPushButton:hover {
+                background: rgba(90, 35, 45, 245);
+                border-color: rgba(255, 110, 125, 180);
+            }
+            QPushButton:pressed {
+                background: rgba(120, 35, 48, 255);
+            }
+        """)
+        self.stop_listening_button.hide()
+        self.stop_listening_button.clicked.connect(self.stop_continuous_listening)
 
         self.sig_trigger_requested.connect(self.trigger)
         self.sig_text_requested.connect(self.submit_text)
@@ -84,6 +110,13 @@ class FloatingButton(QWidget):
         self.tray.setContextMenu(menu); self.tray.show()
 
     def _toggle_visible(self): self.setVisible(not self.isVisible())
+
+    def _set_continuous_ui(self, enabled: bool):
+        self._continuous_mode = enabled
+        self.stop_listening_button.setVisible(enabled)
+        if enabled:
+            self.stop_listening_button.raise_()
+        self.update()
 
     def paintEvent(self, _event):
         p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -131,9 +164,25 @@ class FloatingButton(QWidget):
 
     def _next_run(self): self._run_id += 1; return self._run_id
     def trigger(self):
-        if self._busy and self.state==State.SPEAKING: self._interrupt_current(); return
-        if self._busy: return
+        if self._busy and self.state==State.SPEAKING:
+            self._interrupt_current()
+            if self._continuous_mode:
+                self._start_run(None)
+            return
+        if self._busy:
+            return
+        self._set_continuous_ui(True)
         self._start_run(None)
+
+    def stop_continuous_listening(self):
+        self._set_continuous_ui(False)
+        if self._busy:
+            self._interrupt_current()
+        else:
+            self.status_popup.hide_popup()
+            self.state=State.IDLE
+            self.update()
+
     def request_trigger(self): self.sig_trigger_requested.emit()
 
     def show_text_input(self):
@@ -230,3 +279,9 @@ class FloatingButton(QWidget):
         self.status_popup.hide_popup()
         if self.state!=State.ERROR: self.state=State.IDLE; self.update()
         self._busy=False
+        if self._continuous_mode:
+            QTimer.singleShot(250, self._continue_listening)
+
+    def _continue_listening(self):
+        if self._continuous_mode and not self._busy:
+            self._start_run(None)
