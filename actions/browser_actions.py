@@ -5,7 +5,7 @@ import os
 import shutil
 import urllib.parse
 from pathlib import Path
-from playwright.sync_api import BrowserContext, Page, Playwright, sync_playwright
+from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
 
 _YOUTUBE_SORT_NEWEST = "&sp=CAISAhAB"
 _VIDEO_LINK_SELECTORS = (
@@ -21,6 +21,7 @@ class BrowserActions:
 
     def __init__(self) -> None:
         self._playwright: Playwright | None = None
+        self._browser: Browser | None = None
         self._context: BrowserContext | None = None
         self._current_site: str | None = None
 
@@ -40,32 +41,62 @@ class BrowserActions:
         if self._context is not None:
             return self._context
         self._playwright = sync_playwright().start()
-        profile = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Ruby" / "browser-profile"
-        profile.mkdir(parents=True, exist_ok=True)
-        executable = self._chrome_path()
-        kwargs = {"user_data_dir": str(profile), "headless": False, "no_viewport": True, "args": ["--start-maximized"]}
-        if executable:
-            kwargs["executable_path"] = executable
-        try:
-            self._context = self._playwright.chromium.launch_persistent_context(**kwargs)
-            return self._context
-        except Exception as first_error:
-            # If the persistent Chrome profile is locked, retry with a clean
-            # Playwright Chromium profile rather than making every action fail.
-            fallback = profile.parent / "browser-profile-chromium"
-            fallback.mkdir(parents=True, exist_ok=True)
+        root = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Ruby"
+        persistent_chrome = root / "browser-profile"
+        persistent_chromium = root / "browser-profile-chromium"
+        persistent_chrome.mkdir(parents=True, exist_ok=True)
+        persistent_chromium.mkdir(parents=True, exist_ok=True)
+        chrome = self._chrome_path()
+        errors: list[str] = []
+
+        # Prefer a dedicated persistent Chrome profile so normal browser logins
+        # survive restarts, but never let a locked profile take down all actions.
+        attempts = []
+        if chrome:
+            attempts.append(("Chrome persistent", lambda: self._playwright.chromium.launch_persistent_context(
+                user_data_dir=str(persistent_chrome), headless=False, no_viewport=True,
+                args=["--start-maximized"], executable_path=chrome)))
+        attempts.append(("Chromium persistent", lambda: self._playwright.chromium.launch_persistent_context(
+            user_data_dir=str(persistent_chromium), headless=False, no_viewport=True,
+            args=["--start-maximized"])))
+
+        for label, starter in attempts:
             try:
-                self._context = self._playwright.chromium.launch_persistent_context(
-                    user_data_dir=str(fallback), headless=False, no_viewport=True, args=["--start-maximized"]
-                )
+                self._context = starter()
                 return self._context
-            except Exception:
-                try:
-                    self._playwright.stop()
-                except Exception:
-                    pass
-                self._playwright = None
-                raise RuntimeError(f"Unable to start a visible browser: {first_error}")
+            except Exception as exc:
+                errors.append(f"{label}: {exc}")
+
+        # Last-resort non-persistent browser. This is intentionally separate
+        # from the persistent profile path, so a stale/locked profile cannot
+        # make even simple `open <site>` commands fail.
+        launch_attempts = []
+        if chrome:
+            launch_attempts.append(("Chrome temporary", lambda: self._playwright.chromium.launch(
+                headless=False, executable_path=chrome, args=["--start-maximized"])))
+        launch_attempts.append(("Chromium temporary", lambda: self._playwright.chromium.launch(
+            headless=False, args=["--start-maximized"])))
+
+        for label, starter in launch_attempts:
+            try:
+                self._browser = starter()
+                self._context = self._browser.new_context(no_viewport=True)
+                return self._context
+            except Exception as exc:
+                errors.append(f"{label}: {exc}")
+                if self._browser is not None:
+                    try:
+                        self._browser.close()
+                    except Exception:
+                        pass
+                    self._browser = None
+
+        try:
+            self._playwright.stop()
+        except Exception:
+            pass
+        self._playwright = None
+        raise RuntimeError("Unable to start a visible browser. " + " | ".join(errors[-4:]))
 
     def _page(self, url_hint: str | None = None) -> Page:
         context = self._ensure_context()
@@ -129,13 +160,28 @@ class BrowserActions:
         if not query:
             return False
         site = self._current_site
-        if site not in {"youtube", "google", "github", "reddit", "spotify", "linkedin"}:
-            try:
-                site = self._site_from_url(self._page().url)
-            except Exception:
-                site = None
         if site in {"youtube", "google", "github", "reddit", "spotify", "linkedin"}:
             return self.search(query, site)
+
+        # Generic fallback: use the current page's search field when possible.
+        # This works for arbitrary sites without maintaining a site whitelist.
+        try:
+            page = self._page()
+            self._bring_to_front(page)
+            selectors = (
+                "input[type='search']",
+                "input[placeholder*='Search' i]",
+                "input[aria-label*='Search' i]",
+                "textarea[placeholder*='Search' i]",
+            )
+            for selector in selectors:
+                locator = page.locator(selector).first
+                if locator.count() and locator.is_visible():
+                    locator.fill(query, timeout=5000)
+                    locator.press("Enter", timeout=5000)
+                    return True
+        except Exception:
+            pass
         return False
 
     def play_latest_youtube_video(self, query: str | None = None) -> bool:
@@ -273,8 +319,7 @@ class BrowserActions:
 
     def _remember_site(self, url: str) -> None:
         site = self._site_from_url(url)
-        if site:
-            self._current_site = site
+        self._current_site = site
 
     def shutdown(self) -> None:
         try:
@@ -282,6 +327,12 @@ class BrowserActions:
                 self._context.close()
         finally:
             self._context = None
+            if self._browser:
+                try:
+                    self._browser.close()
+                except Exception:
+                    pass
+                self._browser = None
             if self._playwright:
                 self._playwright.stop()
                 self._playwright = None
