@@ -59,23 +59,16 @@ class WindowsActionExecutor:
         if not q:
             return ActionResult(False)
 
-        # New capabilities are isolated here. If they do not recognize a
-        # request, the stable legacy action path below remains unchanged.
         advanced = self.advanced.try_execute(original)
         if advanced.handled:
             return ActionResult(True, advanced.message)
 
-        # Explicit YouTube search commands are handled locally instead of
-        # falling through to Gemini with instructions for the user. When a
-        # YouTube/Chrome window is already open, navigate the current tab;
-        # otherwise open the search URL in the default browser.
-        youtube_query = self._extract_youtube_search(q)
-        if youtube_query:
-            if self.browser.search_current_tab(youtube_query, preferred_title="youtube"):
-                return ActionResult(True, f"Searching YouTube for {youtube_query}…")
-            search_url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(youtube_query)
-            self._open_url(search_url)
-            return ActionResult(True, f"Opening YouTube and searching for {youtube_query}…")
+        # Browser actions are isolated before the legacy desktop rules so a
+        # request such as "play the latest BBS video" is executed locally
+        # instead of being turned into instructions by Gemini.
+        result = self._handle_browser_command(original, q)
+        if result.handled:
+            return result
 
         open_words = r"\b(open|launch|start|show|bring up|go to|visit|take me to)\b"
         close_words = r"\b(close|quit|exit|shut down|shut)\b"
@@ -110,6 +103,8 @@ class WindowsActionExecutor:
         if url_match:
             url = url_match.group(1)
             url = "https://" + url if url.startswith("www.") else url
+            if self.browser.open_url(url):
+                return ActionResult(True, f"Opening {url}…")
             self._open_url(url)
             return ActionResult(True, f"Opening {url}…")
 
@@ -129,6 +124,51 @@ class WindowsActionExecutor:
             os.startfile(str(Path.home() / "Downloads")); return ActionResult(True, "Opening Downloads…")
         if re.search(open_words + r".*\bdesktop\b", q):
             os.startfile(str(Path.home() / "Desktop")); return ActionResult(True, "Opening Desktop…")
+        return ActionResult(False)
+
+    def _handle_browser_command(self, original: str, q: str) -> ActionResult:
+        # Explicit YouTube search phrasing.
+        youtube_query = self._extract_youtube_search(q)
+        if youtube_query:
+            if self.browser.search_current_tab(youtube_query, preferred_title="youtube"):
+                return ActionResult(True, f"Searching YouTube for {youtube_query}…")
+            return ActionResult(False)
+
+        latest = re.search(
+            r"\b(?:play|watch|open)\s+(?:the\s+)?(?:latest|newest|most\s+recent)\s+(.+?)\s+(?:video\s+)?(?:on\s+)?(?:youtube|yt)\b",
+            q,
+        )
+        if latest:
+            topic = latest.group(1).strip(" .?!")
+            if topic and self.browser.play_latest_youtube_video(topic):
+                return ActionResult(True, f"Playing the latest {topic} video…")
+            return ActionResult(False)
+
+        pause = re.search(r"\b(?:pause|stop)\s+(?:the\s+)?(?:youtube\s+)?video\b|\bpause\s+youtube\b", q)
+        if pause and self.browser.pause_youtube():
+            return ActionResult(True, "Pausing the YouTube video…")
+
+        if re.search(r"\b(?:go|navigate)\s+back\b", q) and self.browser.go_back():
+            return ActionResult(True, "Going back in the browser…")
+        if re.search(r"\b(?:go|navigate)\s+forward\b", q) and self.browser.go_forward():
+            return ActionResult(True, "Going forward in the browser…")
+        if re.search(r"\b(?:refresh|reload)\s+(?:the\s+)?(?:page|tab|browser)\b", q) and self.browser.refresh():
+            return ActionResult(True, "Refreshing the page…")
+        if re.search(r"\bclose\s+(?:this\s+)?(?:browser\s+)?tab\b", q) and self.browser.close_tab():
+            return ActionResult(True, "Closing the browser tab…")
+
+        click = re.search(r"\bclick\s+(?:on\s+)?(?:the\s+)?(.+?)\s*$", original, re.I)
+        if click:
+            target = click.group(1).strip(" .?!")
+            if target and self.browser.click_text(target):
+                return ActionResult(True, f"Clicking {target}…")
+
+        search = re.search(r"\b(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+on\s+(youtube|google)\b", q, re.I)
+        if search:
+            term, site = search.group(1).strip(" .?!"), search.group(2)
+            if self.browser.search(term, site):
+                return ActionResult(True, f"Searching {site} for {term}…")
+
         return ActionResult(False)
 
     @staticmethod
@@ -164,9 +204,10 @@ class WindowsActionExecutor:
         if search_match:
             term = search_match.group(1).strip(" .?!")
             if term and term not in {alias, alias.removesuffix(".com")}:
-                search_url = (url + "/results?search_query=" if "youtube.com" in url else url + "/search?q=") + urllib.parse.quote_plus(term)
-                self._open_url(search_url)
-                return ActionResult(True, f"Opening {alias} and searching for {term}…")
+                if self.browser.search(term, "youtube" if "youtube.com" in url else "google"):
+                    return ActionResult(True, f"Opening {alias} and searching for {term}…")
+        if self.browser.open_url(url):
+            return ActionResult(True, f"Opening {alias}…")
         self._open_url(url)
         return ActionResult(True, f"Opening {alias}…")
 
