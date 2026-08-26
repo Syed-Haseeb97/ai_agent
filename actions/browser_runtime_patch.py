@@ -99,10 +99,8 @@ _ORIGINAL_EXECUTE = BrowserAgent.execute
 
 
 def _execute(self: BrowserAgent, text: str) -> BrowserTaskResult:
-    normalized = text.strip()
+    normalized = text.strip().replace("linkdin", "linkedin")
     lower = normalized.lower()
-    if lower == "open linkdin":
-        normalized = "open linkedin"
 
     match = re.match(r"^open\s+spotify\s+and\s+play\s+(.+?)\s*$", normalized, re.I)
     if match:
