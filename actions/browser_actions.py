@@ -1,15 +1,52 @@
-"""Playwright-backed browser primitives used by Ruby's generic browser agent."""
+"""Playwright-backed browser primitives used by Ruby's generic browser agent.
+
+Design note (read before touching this file)
+----------------------------------------------
+Earlier versions of this module drove the browser in two completely
+different, uncoordinated ways:
+
+1. ``open_url``/``search`` tried ``pyautogui`` window-activation + keystrokes
+   aimed at whatever window Windows reported as "Chrome" (``pygetwindow``).
+2. Every other action (clicking a video, typing, scrolling, going back...)
+   used a Playwright ``Page`` from a *separate*, dedicated automation
+   browser context (``launch_persistent_context``).
+
+Those are two different browser windows. A search performed via keystrokes
+in the user's real Chrome window left the Playwright-controlled window
+untouched (often still on ``about:blank``), so any later DOM-based action
+(click the first video, etc.) ran against the wrong page and silently did
+nothing useful. The "play the latest video" path made this worse by not
+using Playwright at all: it blindly pressed Tab ~12 times and Enter,
+*always* reporting success regardless of what was actually focused -- which
+is why the assistant would say "Playing the latest video for X..." while
+the browser did nothing.
+
+The fix is architectural, not cosmetic: every single action in this class
+now goes through the *same* Playwright-controlled, visible (non-headless)
+persistent browser context, using real DOM locators. There is exactly one
+browser, one context, and one notion of "the current page." No pyautogui,
+no window-title guessing, no blind keystroke sequences.
+"""
 from __future__ import annotations
 
 import os
 import shutil
-import time
 import urllib.parse
 from pathlib import Path
 
-import pyautogui
-import pygetwindow as gw
 from playwright.sync_api import BrowserContext, Page, Playwright, sync_playwright
+
+# YouTube's "sort by upload date" search filter. This is what makes
+# "play the latest video by X" actually mean *latest*, instead of just
+# "most relevant", which is YouTube's default search ordering.
+_YOUTUBE_SORT_NEWEST = "&sp=CAISAhAB"
+
+_VIDEO_LINK_SELECTORS = (
+    "ytd-video-renderer a#video-title",
+    "ytd-rich-item-renderer a#video-title",
+    "ytd-channel-video-player-renderer a#video-title",
+    "a#video-title",
+)
 
 
 class BrowserActions:
@@ -20,6 +57,9 @@ class BrowserActions:
         self._context: BrowserContext | None = None
         self._current_site: str | None = None
 
+    # ------------------------------------------------------------------
+    # Context / page plumbing
+    # ------------------------------------------------------------------
     @staticmethod
     def _chrome_path() -> str | None:
         candidates = [
@@ -33,62 +73,80 @@ class BrowserActions:
         return shutil.which("chrome.exe")
 
     def _ensure_context(self) -> BrowserContext:
+        """Start (once) the single, visible, persistent browser context that
+        every action in this class operates on. ``headless=False`` means
+        this is a real, on-screen browser window -- not a hidden one."""
         if self._context is not None:
             return self._context
         self._playwright = sync_playwright().start()
         profile = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Ruby" / "browser-profile"
         profile.mkdir(parents=True, exist_ok=True)
         executable = self._chrome_path()
-        kwargs = {"user_data_dir": str(profile), "headless": False, "no_viewport": True, "args": ["--start-maximized"]}
+        kwargs = {
+            "user_data_dir": str(profile),
+            "headless": False,
+            "no_viewport": True,
+            "args": ["--start-maximized"],
+        }
         if executable:
             kwargs["executable_path"] = executable
         self._context = self._playwright.chromium.launch_persistent_context(**kwargs)
         return self._context
 
     def _page(self, url_hint: str | None = None) -> Page:
+        """Return the page the user is looking at. If ``url_hint`` is given,
+        prefer an already-open tab whose URL matches it (e.g. "youtube"),
+        so we keep acting on the same tab instead of accumulating new ones.
+        """
         context = self._ensure_context()
         pages = context.pages
         if url_hint:
             hint = url_hint.lower()
             for page in reversed(pages):
-                if hint in page.url.lower():
-                    return page
+                try:
+                    if hint in page.url.lower():
+                        return page
+                except Exception:
+                    continue
         if pages:
             return pages[-1]
         return context.new_page()
 
-    def open_url(self, url: str) -> bool:
-        """Open a URL in the user's existing Chrome when possible."""
+    def _bring_to_front(self, page: Page) -> None:
         try:
-            window = self._find_browser_window()
-            if window is not None:
-                if window.isMinimized:
-                    window.restore()
-                window.activate()
-                time.sleep(0.15)
-                pyautogui.hotkey("ctrl", "l")
-                pyautogui.write(url, interval=0.003)
-                pyautogui.press("enter")
-                self._remember_site(url)
-                return True
+            page.bring_to_front()
         except Exception:
             pass
 
+    # ------------------------------------------------------------------
+    # Navigation
+    # ------------------------------------------------------------------
+    def open_url(self, url: str) -> bool:
+        """Navigate the visible Playwright-controlled browser to ``url``."""
         try:
             page = self._page()
+            self._bring_to_front(page)
             page.goto(url, wait_until="domcontentloaded", timeout=30000)
             self._remember_site(page.url)
             return True
         except Exception:
             return False
 
-    def search(self, query: str, site: str = "youtube") -> bool:
+    def search(self, query: str, site: str = "youtube", newest: bool = False) -> bool:
+        """Build a search-results URL for ``site`` and navigate to it.
+
+        ``newest`` (YouTube only) sorts by upload date so "latest video"
+        requests actually land on the most recently uploaded video, not
+        just the most "relevant" one.
+        """
         query = query.strip()
         if not query:
             return False
         site = site.lower()
         if site in {"youtube", "yt"}:
             url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(query)
+            if newest:
+                url += _YOUTUBE_SORT_NEWEST
             site = "youtube"
         elif site == "google":
             url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(query)
@@ -99,96 +157,65 @@ class BrowserActions:
         else:
             url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(query)
             site = "google"
-        if self._keyboard_search_existing_window(query, preferred_title=site):
-            self._current_site = site
-            return True
         ok = self.open_url(url)
         if ok:
             self._current_site = site
         return ok
 
     def search_current_page(self, query: str) -> bool:
+        """Search using whatever site the user was last on, without letting
+        an explicit destination elsewhere override it (that logic lives in
+        BrowserAgent -- by the time we get here, the caller has already
+        decided this should reuse the current context)."""
         query = query.strip()
         if not query:
             return False
-        site = self._current_site or self._site_from_window_title()
+        site = self._current_site
+        if site not in {"youtube", "google", "github", "reddit"}:
+            try:
+                site = self._site_from_url(self._page().url)
+            except Exception:
+                site = None
         if site in {"youtube", "google", "github", "reddit"}:
             return self.search(query, site)
-        try:
-            page = self._page()
-            current = page.url.lower()
-            site = self._site_from_url(current) or self._current_site
-            if site in {"youtube", "google", "github", "reddit"}:
-                return self.search(query, site)
-        except Exception:
-            pass
         return False
 
-    def play_youtube(self, query: str | None = None) -> bool:
-        try:
-            page = self._page("youtube")
-            if query:
-                self.search(query, "youtube")
-                page = self._page("youtube")
-                page.wait_for_selector("a#video-title", timeout=12000)
-            return self._click_first_video(page)
-        except Exception:
-            return False
-
+    # ------------------------------------------------------------------
+    # Media
+    # ------------------------------------------------------------------
     def play_latest_youtube_video(self, query: str | None = None) -> bool:
-        """Search for an optional topic/channel and activate the first visible YouTube result."""
+        """Find and click a video on YouTube using real DOM locators.
+
+        If ``query`` is given, this performs a fresh "sorted by upload
+        date" search for it first (so "the latest video by X" means the
+        actual newest upload, for an arbitrary, user-supplied ``X`` --
+        never a hardcoded name). Either way, the click itself is delegated
+        to :meth:`click_first_result`-equivalent logic, which waits for and
+        clicks the real first result element instead of guessing with Tab
+        presses.
+        """
         try:
             if query:
-                if not self._keyboard_search_existing_window(query, "youtube", newest=True):
+                if not self.search(query, "youtube", newest=True):
                     return False
-                self._current_site = "youtube"
+                page = self._page("youtube")
+                page.wait_for_selector(", ".join(_VIDEO_LINK_SELECTORS), timeout=12000)
             else:
-                if not self._find_browser_window("youtube"):
+                page = self._page("youtube")
+                if "youtube.com" not in page.url.lower():
                     return False
-            # The visible Chrome is deliberately used here. The Playwright
-            # context may be a different browser/profile and must not be used
-            # for a command whose visible search was performed in Chrome.
-            time.sleep(2.0)
-            return self._keyboard_click_first_youtube_video()
-        except Exception:
-            return False
-
-    def _keyboard_click_first_youtube_video(self) -> bool:
-        """Focus the first YouTube search result in the user's visible Chrome."""
-        window = self._find_browser_window("youtube")
-        if window is None:
-            return False
-        try:
-            if window.isMinimized:
-                window.restore()
-            window.activate()
-            time.sleep(0.25)
-
-            # YouTube's search results are keyboard-focusable. Starting from
-            # the page, use Home to reset focus, then tab through the stable
-            # top navigation and land on the first video link. If focus is not
-            # on the page yet, an extra tab is harmless.
-            pyautogui.press("home")
-            for _ in range(12):
-                pyautogui.press("tab")
-                time.sleep(0.08)
-                # Enter is intentionally delayed until the first video link is
-                # reached; this loop is paired with the browser's focus order.
-            pyautogui.press("enter")
-            return True
+                page.wait_for_selector(", ".join(_VIDEO_LINK_SELECTORS), timeout=12000)
+            return self._click_first_video(page)
         except Exception:
             return False
 
     @staticmethod
     def _click_first_video(page: Page) -> bool:
-        candidates = [
-            page.locator("ytd-video-renderer a#video-title").first,
-            page.locator("ytd-rich-item-renderer a#video-title").first,
-            page.locator("a#video-title").first,
-        ]
-        for locator in candidates:
+        for selector in _VIDEO_LINK_SELECTORS:
             try:
+                locator = page.locator(selector).first
                 if locator.count() and locator.is_visible():
+                    locator.scroll_into_view_if_needed(timeout=5000)
                     locator.click(timeout=7000)
                     return True
             except Exception:
@@ -196,17 +223,18 @@ class BrowserActions:
         return False
 
     def click_first_result(self) -> bool:
+        """Click the first visible result on the current page (YouTube
+        search results / channel video grid, or a generic results list)."""
         try:
             page = self._page()
-            selectors = [
-                "ytd-video-renderer a#video-title",
-                "ytd-rich-item-renderer a#video-title",
+            selectors = list(_VIDEO_LINK_SELECTORS) + [
                 "main a[href*='/watch']",
                 "main a[href*='/results/']",
             ]
             for selector in selectors:
                 locator = page.locator(selector).first
                 if locator.count() and locator.is_visible():
+                    locator.scroll_into_view_if_needed(timeout=5000)
                     locator.click(timeout=7000)
                     return True
         except Exception:
@@ -224,12 +252,16 @@ class BrowserActions:
             pass
         return False
 
+    # ------------------------------------------------------------------
+    # Generic interaction
+    # ------------------------------------------------------------------
     def click_text(self, text: str) -> bool:
         text = text.strip()
         if not text:
             return False
         try:
             page = self._page()
+            self._bring_to_front(page)
             locators = [
                 page.get_by_role("button", name=text, exact=False).first,
                 page.get_by_role("link", name=text, exact=False).first,
@@ -238,6 +270,7 @@ class BrowserActions:
             for locator in locators:
                 try:
                     if locator.count() and locator.is_visible():
+                        locator.scroll_into_view_if_needed(timeout=5000)
                         locator.click(timeout=7000)
                         return True
                 except Exception:
@@ -249,6 +282,7 @@ class BrowserActions:
     def type_text(self, text: str, target: str | None = None) -> bool:
         try:
             page = self._page()
+            self._bring_to_front(page)
             if target:
                 locators = [
                     page.get_by_role("textbox", name=target, exact=False).first,
@@ -305,6 +339,9 @@ class BrowserActions:
         except Exception:
             return False
 
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
     @staticmethod
     def _site_from_url(url: str) -> str | None:
         lower = url.lower()
@@ -318,74 +355,10 @@ class BrowserActions:
             return "reddit"
         return None
 
-    @staticmethod
-    def _site_from_window_title() -> str | None:
-        try:
-            titles = [t.lower() for t in gw.getAllTitles() if t]
-            for title in titles:
-                if "youtube" in title:
-                    return "youtube"
-                if "google" in title:
-                    return "google"
-                if "github" in title:
-                    return "github"
-                if "reddit" in title:
-                    return "reddit"
-        except Exception:
-            pass
-        return None
-
     def _remember_site(self, url: str) -> None:
         site = self._site_from_url(url)
         if site:
             self._current_site = site
-
-    @staticmethod
-    def _find_browser_window(preferred_title: str | None = None):
-        titles = [t for t in gw.getAllTitles() if t]
-        preferred = (preferred_title or "").lower()
-        if preferred:
-            for title in titles:
-                if preferred in title.lower() and ("chrome" in title.lower() or "youtube" in title.lower()):
-                    windows = gw.getWindowsWithTitle(title)
-                    if windows:
-                        return windows[0]
-        for title in titles:
-            lower = title.lower()
-            if "chrome" in lower or "youtube" in lower:
-                windows = gw.getWindowsWithTitle(title)
-                if windows:
-                    return windows[0]
-        return None
-
-    def _keyboard_search_existing_window(self, query: str, preferred_title: str | None = None, newest: bool = False) -> bool:
-        window = self._find_browser_window(preferred_title)
-        if window is None:
-            return False
-        try:
-            if window.isMinimized:
-                window.restore()
-            window.activate()
-            time.sleep(0.15)
-            site = (preferred_title or self._site_from_window_title() or "youtube").lower()
-            if site in {"youtube", "yt"}:
-                url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(query)
-                if newest:
-                    url += "&sp=CAISAhAB"
-            elif site == "google":
-                url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(query)
-            elif site == "github":
-                url = "https://github.com/search?q=" + urllib.parse.quote_plus(query)
-            elif site == "reddit":
-                url = "https://www.reddit.com/search/?q=" + urllib.parse.quote_plus(query)
-            else:
-                url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(query)
-            pyautogui.hotkey("ctrl", "l")
-            pyautogui.write(url, interval=0.005)
-            pyautogui.press("enter")
-            return True
-        except Exception:
-            return False
 
     def shutdown(self) -> None:
         try:

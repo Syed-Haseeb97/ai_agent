@@ -54,6 +54,31 @@ class BrowserAgent:
         "reddit": "reddit", "gmail": "gmail", "chatgpt": "chatgpt", "amazon": "amazon", "netflix": "netflix",
     }
 
+    # "Search X on <this>" where <this> names the browser itself (or its
+    # default search engine) rather than a destination website. Without
+    # this, "search for linkedin on google chrome" fails to match the
+    # explicit on-site pattern (because "google chrome" isn't a known
+    # *site*) and falls through to a generic search that reuses whatever
+    # site the user was last on -- literally searching YouTube for the
+    # string "linkedin on google chrome".
+    BROWSER_ALIASES = {
+        "chrome": "google", "google chrome": "google", "browser": "google",
+        "this browser": "google", "the browser": "google",
+    }
+
+    # Desktop apps / OS surfaces that "open X" must never be mistaken for a
+    # website. This list intentionally contains only generic app/setting
+    # nouns (mirroring what WindowsActionExecutor already launches as native
+    # apps) -- never specific site/channel/video names.
+    NON_WEB_KEYWORDS = (
+        "chrome", "notepad", "calculator", "calc", "task manager", "taskmgr",
+        "visual studio code", "vs code", "code", "command prompt", "cmd",
+        "powershell", "power shell", "camera", "file explorer", "explorer",
+        "downloads", "desktop", "bluetooth", "wifi", "wi-fi", "network",
+        "sound", "audio", "volume", "alarm", "alarms", "clock", "settings",
+        "control panel", "recycle bin", "this pc", "task bar", "taskbar",
+    )
+
     def __init__(self, browser: BrowserActions):
         self.browser = browser
 
@@ -91,35 +116,72 @@ class BrowserAgent:
         return BrowserTaskResult(True, " ".join(messages), recognized=True)
 
     def _open(self, q: str) -> BrowserTaskResult:
-        site = self._site_in_text(q)
-        if not site or not re.search(r"\b(open|launch|start|visit|go to|take me to|show)\b", q):
+        if not re.search(r"\b(open|launch|start|visit|go to|take me to|show)\b", q):
             return BrowserTaskResult(False)
-        search_match = re.search(r"\b(?:and\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s*$", q)
-        if search_match:
-            term = self._clean_term(search_match.group(1))
-            if term:
-                ok = self.browser.search(term, site)
-                if ok:
-                    return BrowserTaskResult(True, f"Opening {site} and searching for {term}…", recognized=True)
-                return BrowserTaskResult(False, f"I tried to open {site} and search for {term}, but the browser action failed.", recognized=True)
-        ok = self.browser.open_url(self._site_url(site))
+        if self._mentions_desktop_app(q):
+            # "open chrome" / "open notepad" / "open bluetooth settings" etc.
+            # are native OS actions, not websites -- let WindowsActionExecutor
+            # handle them instead of guessing a domain name for them.
+            return BrowserTaskResult(False)
+
+        site = self._site_in_text(q)
+        if site:
+            search_match = re.search(r"\b(?:and\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s*$", q)
+            if search_match:
+                term = self._clean_term(search_match.group(1))
+                if term:
+                    ok = self.browser.search(term, site)
+                    if ok:
+                        return BrowserTaskResult(True, f"Opening {site} and searching for {term}…", recognized=True)
+                    return BrowserTaskResult(False, f"I tried to open {site} and search for {term}, but the browser action failed.", recognized=True)
+            ok = self.browser.open_url(self._site_url(site))
+            if ok:
+                return BrowserTaskResult(True, f"Opening {site}…", recognized=True)
+            return BrowserTaskResult(False, f"I tried to open {site}, but the browser action failed.", recognized=True)
+
+        # Generic fallback: an arbitrary, user-supplied destination that
+        # isn't one of the few sites we have a direct URL for and isn't a
+        # desktop app either (e.g. "open linkedin"). Guess the obvious
+        # ".com" domain -- the same heuristic a person would use when
+        # typing it into an address bar -- without hardcoding the name.
+        generic = re.match(
+            r"^(?:please\s+)?(?:open|launch|start|visit|go\s+to|take\s+me\s+to|show)\s+(?:me\s+)?(?:the\s+)?(.+?)\s*$",
+            q, re.I,
+        )
+        if not generic:
+            return BrowserTaskResult(False)
+        target = self._clean_term(generic.group(1))
+        if not target or re.search(r"\b(search|look\s+up|find)\b", target):
+            return BrowserTaskResult(False)
+        url = self._guess_url(target)
+        ok = self.browser.open_url(url)
         if ok:
-            return BrowserTaskResult(True, f"Opening {site}…", recognized=True)
-        return BrowserTaskResult(False, f"I tried to open {site}, but the browser action failed.", recognized=True)
+            return BrowserTaskResult(True, f"Opening {target}…", recognized=True)
+        return BrowserTaskResult(False, f"I tried to open {target}, but the browser action failed.", recognized=True)
 
     def _search(self, q: str) -> BrowserTaskResult:
+        # Note: group(2) is deliberately unrestricted (".+?") rather than a
+        # fixed site alternation, so destinations like "google chrome" (two
+        # words, and not itself a website) still get captured whole and can
+        # be resolved against SITE_ALIASES *or* BROWSER_ALIASES below --
+        # instead of "chrome" being left dangling and folded back into the
+        # search term (which used to make "search for X on google chrome"
+        # become a literal YouTube search for "X on google chrome").
         explicit = re.match(
-            r"^(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+(?:on|in)\s+(?:this\s+|my\s+)?(youtube|yt|google|github|reddit)(?:\s+tab)?\s*$",
+            r"^(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+(?:on|in)\s+"
+            r"(?:this\s+|my\s+|the\s+)?(.+?)(?:\s+(?:tab|browser|app))?\s*$",
             q,
             re.I,
         )
         if explicit:
             term = self._clean_term(explicit.group(1))
-            site = self.SITE_ALIASES[explicit.group(2).lower()]
-            ok = self.browser.search(term, site)
-            if ok:
-                return BrowserTaskResult(True, f"Searching {site} for {term}…", recognized=True)
-            return BrowserTaskResult(False, f"I tried to search {site} for {term}, but the browser action failed.", recognized=True)
+            destination = explicit.group(2).strip().lower()
+            site = self.SITE_ALIASES.get(destination) or self.BROWSER_ALIASES.get(destination)
+            if site and term:
+                ok = self.browser.search(term, site)
+                if ok:
+                    return BrowserTaskResult(True, f"Searching {site} for {term}…", recognized=True)
+                return BrowserTaskResult(False, f"I tried to search {site} for {term}, but the browser action failed.", recognized=True)
         generic = re.match(r"^(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s*$", q, re.I)
         if not generic:
             return BrowserTaskResult(False)
@@ -225,6 +287,15 @@ class BrowserAgent:
             "reddit": "https://www.reddit.com", "gmail": "https://mail.google.com", "chatgpt": "https://chatgpt.com",
             "amazon": "https://www.amazon.com", "netflix": "https://www.netflix.com",
         }.get(site, "https://www.google.com")
+
+    @classmethod
+    def _mentions_desktop_app(cls, q: str) -> bool:
+        return any(re.search(rf"\b{re.escape(kw)}\b", q) for kw in cls.NON_WEB_KEYWORDS)
+
+    @staticmethod
+    def _guess_url(target: str) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "", target.lower())
+        return f"https://www.{slug}.com" if slug else "https://www.google.com"
 
     @staticmethod
     def _clean_term(value: str | None) -> str:
