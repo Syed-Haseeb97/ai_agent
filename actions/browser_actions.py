@@ -39,7 +39,6 @@ class BrowserActions:
     def _ensure_context(self) -> BrowserContext:
         if self._context is not None:
             return self._context
-
         self._playwright = sync_playwright().start()
         profile = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Ruby" / "browser-profile"
         profile.mkdir(parents=True, exist_ok=True)
@@ -76,7 +75,6 @@ class BrowserActions:
             return False
 
     def search_current_tab(self, query: str, preferred_title: str | None = None) -> bool:
-        """Search an existing YouTube tab; use Playwright when Ruby owns it."""
         query = query.strip()
         if not query:
             return False
@@ -94,7 +92,6 @@ class BrowserActions:
         return self._keyboard_search_existing_window(query, preferred_title)
 
     def search_current_page(self, query: str) -> bool:
-        """Search the currently controlled page using its site, without requiring a site name."""
         query = query.strip()
         if not query:
             return False
@@ -141,11 +138,13 @@ class BrowserActions:
             return False
         return False
 
-    def play_latest_youtube_video(self, query: str) -> bool:
-        """Open the first current YouTube result for the requested topic."""
+    def play_latest_youtube_video(self, query: str | None = None) -> bool:
+        """Open the first relevant current YouTube result, or the current result page."""
         try:
-            self.search(query, "youtube")
             page = self._page("youtube")
+            if query:
+                self.search(query, "youtube")
+                page = self._page("youtube")
             page.wait_for_selector("a#video-title", timeout=15000)
             result = page.locator("a#video-title").first
             if result.count():
