@@ -93,6 +93,22 @@ class BrowserActions:
             pass
         return self._keyboard_search_existing_window(query, preferred_title)
 
+    def search_current_page(self, query: str) -> bool:
+        """Search the currently controlled page using its site, without requiring a site name."""
+        query = query.strip()
+        if not query:
+            return False
+        try:
+            page = self._page()
+            current = page.url.lower()
+            if "youtube.com" in current:
+                return self.search(query, "youtube")
+            if "google.com" in current:
+                return self.search(query, "google")
+        except Exception:
+            pass
+        return False
+
     def search(self, query: str, site: str = "youtube") -> bool:
         query = query.strip()
         if not query:
