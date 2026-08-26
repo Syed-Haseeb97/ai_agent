@@ -63,9 +63,6 @@ class WindowsActionExecutor:
         if advanced.handled:
             return ActionResult(True, advanced.message)
 
-        # Browser actions are isolated before the legacy desktop rules so a
-        # request such as "play the latest BBS video" is executed locally
-        # instead of being turned into instructions by Gemini.
         result = self._handle_browser_command(original, q)
         if result.handled:
             return result
@@ -127,7 +124,6 @@ class WindowsActionExecutor:
         return ActionResult(False)
 
     def _handle_browser_command(self, original: str, q: str) -> ActionResult:
-        # Explicit YouTube search phrasing.
         youtube_query = self._extract_youtube_search(q)
         if youtube_query:
             if self.browser.search_current_tab(youtube_query, preferred_title="youtube"):
@@ -163,10 +159,10 @@ class WindowsActionExecutor:
             if target and self.browser.click_text(target):
                 return ActionResult(True, f"Clicking {target}…")
 
-        search = re.search(r"\b(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+on\s+(youtube|google)\b", q, re.I)
+        search = re.search(r"\b(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+on\s+(youtube|yt|google)\b", q, re.I)
         if search:
             term, site = search.group(1).strip(" .?!"), search.group(2)
-            if self.browser.search(term, site):
+            if self.browser.search(term, "youtube" if site == "yt" else site):
                 return ActionResult(True, f"Searching {site} for {term}…")
 
         return ActionResult(False)
@@ -174,8 +170,8 @@ class WindowsActionExecutor:
     @staticmethod
     def _extract_youtube_search(q: str) -> str | None:
         patterns = (
-            r"\b(?:in|on)\s+(?:this\s+)?youtube(?:\s+tab)?\s+(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)(?:\s+and\s+please)?$",
-            r"\b(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+(?:on|in)\s+(?:this\s+)?youtube(?:\s+tab)?(?:\s+and\s+please)?$",
+            r"\b(?:in|on)\s+(?:this\s+)?(?:youtube|yt)(?:\s+tab)?\s+(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)(?:\s+and\s+please)?$",
+            r"\b(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+(?:on|in)\s+(?:this\s+)?(?:youtube|yt)(?:\s+tab)?(?:\s+and\s+please)?$",
         )
         for pattern in patterns:
             match = re.search(pattern, q, re.I)
