@@ -102,7 +102,7 @@ _ORIGINAL_SEARCH_CURRENT_PAGE = BrowserActions.search_current_page
 
 
 def _execute(self: BrowserAgent, text: str) -> BrowserTaskResult:
-    normalized = text.strip().replace("linkdin", "linkedin")
+    normalized = text.strip()
     lower = normalized.lower()
     if lower == "open spotify":
         ok = self.browser.open_url("https://open.spotify.com")
@@ -118,7 +118,22 @@ def _execute(self: BrowserAgent, text: str) -> BrowserTaskResult:
     return _ORIGINAL_EXECUTE(self, normalized)
 
 
+def _generic_destination_url(target: str) -> str:
+    """Resolve arbitrary spoken website names without a site whitelist.
+
+    We deliberately do not maintain a growing table of website names here.
+    Google is used as a generic destination resolver; its 'I'm Feeling Lucky'
+    redirect normally lands on the official/relevant site for names such as
+    Notion, Gemini, Perplexity, Canva, Discord, Slack, or an arbitrary site
+    the user names. Known sites can still use their faster direct aliases.
+    """
+    target = re.sub(r"\s+", " ", target).strip()
+    query = urllib.parse.quote_plus(f"{target} official website")
+    return f"https://www.google.com/search?q={query}&btnI=1"
+
+
 BrowserActions._ensure_context = _ensure_context
 BrowserActions.search_current_page = _search_current_page
 BrowserActions.play_spotify_track = _play_spotify_track
+BrowserAgent._guess_url = staticmethod(_generic_destination_url)
 BrowserAgent.execute = _execute
