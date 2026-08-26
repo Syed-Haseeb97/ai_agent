@@ -58,15 +58,7 @@ class BrowserActions:
         return context.new_page()
 
     def open_url(self, url: str) -> bool:
-        """Open a URL in the user's existing Chrome when possible.
-
-        The previous implementation always created a separate Playwright
-        profile. That meant the assistant could open YouTube in one Chrome
-        instance while the user was looking at another, and later browser
-        commands operated on the wrong context. Prefer the visible existing
-        Chrome window and fall back to Playwright only when no Chrome window
-        exists.
-        """
+        """Open a URL in the user's existing Chrome when possible."""
         try:
             window = self._find_browser_window()
             if window is not None:
@@ -107,29 +99,21 @@ class BrowserActions:
         else:
             url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(query)
             site = "google"
-
-        # Search in the same visible browser window the user is already using.
         if self._keyboard_search_existing_window(query, preferred_title=site):
             self._current_site = site
             return True
-
         ok = self.open_url(url)
         if ok:
             self._current_site = site
         return ok
 
     def search_current_page(self, query: str) -> bool:
-        """Search the current visible browser page, not a hidden/separate profile."""
         query = query.strip()
         if not query:
             return False
-
-        # First use the visible Chrome window. This is the user's actual tab.
         site = self._current_site or self._site_from_window_title()
         if site in {"youtube", "google", "github", "reddit"}:
             return self.search(query, site)
-
-        # If Playwright already owns a useful page, use its URL as a fallback.
         try:
             page = self._page()
             current = page.url.lower()
@@ -138,7 +122,6 @@ class BrowserActions:
                 return self.search(query, site)
         except Exception:
             pass
-
         return False
 
     def play_youtube(self, query: str | None = None) -> bool:
@@ -153,21 +136,47 @@ class BrowserActions:
             return False
 
     def play_latest_youtube_video(self, query: str | None = None) -> bool:
-        """Search optionally, request newest-first results, then inspect the DOM and open the first video."""
+        """Search for an optional topic/channel and activate the first visible YouTube result."""
         try:
-            # When a query is supplied, navigate/search in the visible Chrome
-            # first. Playwright is then used only if it can see that same page.
             if query:
-                if not self.search(query, "youtube"):
+                if not self._keyboard_search_existing_window(query, "youtube", newest=True):
                     return False
-            page = self._page("youtube")
-            page.wait_for_selector("a#video-title", timeout=15000)
-            return self._click_first_video(page)
+                self._current_site = "youtube"
+            else:
+                if not self._find_browser_window("youtube"):
+                    return False
+            # The visible Chrome is deliberately used here. The Playwright
+            # context may be a different browser/profile and must not be used
+            # for a command whose visible search was performed in Chrome.
+            time.sleep(2.0)
+            return self._keyboard_click_first_youtube_video()
         except Exception:
-            # Last-resort keyboard path for the user's visible Chrome.
-            if query and self._keyboard_search_existing_window(query, "youtube"):
-                time.sleep(1.5)
-                return self._keyboard_click_first_youtube_video()
+            return False
+
+    def _keyboard_click_first_youtube_video(self) -> bool:
+        """Focus the first YouTube search result in the user's visible Chrome."""
+        window = self._find_browser_window("youtube")
+        if window is None:
+            return False
+        try:
+            if window.isMinimized:
+                window.restore()
+            window.activate()
+            time.sleep(0.25)
+
+            # YouTube's search results are keyboard-focusable. Starting from
+            # the page, use Home to reset focus, then tab through the stable
+            # top navigation and land on the first video link. If focus is not
+            # on the page yet, an extra tab is harmless.
+            pyautogui.press("home")
+            for _ in range(12):
+                pyautogui.press("tab")
+                time.sleep(0.08)
+                # Enter is intentionally delayed until the first video link is
+                # reached; this loop is paired with the browser's focus order.
+            pyautogui.press("enter")
+            return True
+        except Exception:
             return False
 
     @staticmethod
@@ -185,22 +194,6 @@ class BrowserActions:
             except Exception:
                 continue
         return False
-
-    def _keyboard_click_first_youtube_video(self) -> bool:
-        """Use keyboard navigation as a last-resort fallback in visible Chrome."""
-        window = self._find_browser_window("youtube")
-        if window is None:
-            return False
-        try:
-            if window.isMinimized:
-                window.restore()
-            window.activate()
-            time.sleep(0.2)
-            pyautogui.press("tab", presses=8, interval=0.05)
-            pyautogui.press("enter")
-            return True
-        except Exception:
-            return False
 
     def click_first_result(self) -> bool:
         try:
@@ -365,7 +358,7 @@ class BrowserActions:
                     return windows[0]
         return None
 
-    def _keyboard_search_existing_window(self, query: str, preferred_title: str | None = None) -> bool:
+    def _keyboard_search_existing_window(self, query: str, preferred_title: str | None = None, newest: bool = False) -> bool:
         window = self._find_browser_window(preferred_title)
         if window is None:
             return False
@@ -377,6 +370,8 @@ class BrowserActions:
             site = (preferred_title or self._site_from_window_title() or "youtube").lower()
             if site in {"youtube", "yt"}:
                 url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(query)
+                if newest:
+                    url += "&sp=CAISAhAB"
             elif site == "google":
                 url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(query)
             elif site == "github":
