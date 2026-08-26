@@ -44,19 +44,18 @@ class AdvancedFeatures:
     def try_execute(self, text: str) -> FeatureResult:
         q = text.strip().lower()
         if not q: return FeatureResult(False)
-        for handler in (self._youtube_latest, self._screenshot, self._recording, self._startup, self._wake_word_settings, self._file_management, self._system_controls, self._reminder, self._clipboard, self._screen_interaction, self._multi_step, self._personality, self._memory):
+        # Browser tasks are intentionally handled by BrowserAgent/Playwright.
+        # Keeping the old YouTube shortcut here would steal generic commands
+        # before the browser agent can plan them.
+        for handler in (self._screenshot, self._recording, self._startup, self._wake_word_settings, self._file_management, self._system_controls, self._reminder, self._clipboard, self._screen_interaction, self._multi_step, self._personality, self._memory):
             result = handler(text, q)
             if result.handled: return result
         return FeatureResult(False)
 
     def _youtube_latest(self, text: str, q: str) -> FeatureResult:
-        m = re.search(r"(?:play|watch|find)\s+(?:the\s+)?(?:latest|newest|most recent)\s+(.+?)\s+(?:video|videos)\s+(?:on|from)\s+youtube", q)
-        if not m: return FeatureResult(False)
-        term = m.group(1).strip()
-        # YouTube's upload-date filter puts newest matching videos first.
-        url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(term) + "&sp=CAISAhAB"
-        webbrowser.open(url)
-        return FeatureResult(True, f"Opening the newest YouTube results for {term}…")
+        # Retained for compatibility with older imports; browser execution now
+        # belongs exclusively to actions.browser_agent.BrowserAgent.
+        return FeatureResult(False)
 
     def _screenshot(self, text: str, q: str) -> FeatureResult:
         if not re.search(r"\b(take|capture|save)\b.*\b(screenshot|screen shot|screen capture)\b|\bscreenshot\b", q): return FeatureResult(False)
@@ -165,7 +164,6 @@ class AdvancedFeatures:
         if not re.search(r"\b(?:then|and then|after that)\b",q): return FeatureResult(False)
         parts=[p.strip(" .") for p in re.split(r"\s+(?:and then|then|after that)\s+",text,flags=re.I) if p.strip()]
         if len(parts)<2: return FeatureResult(False)
-        # Import lazily to avoid a module-level circular import.
         try:
             from actions.windows_actions import WindowsActionExecutor
             executor=WindowsActionExecutor(); messages=[]
