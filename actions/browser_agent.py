@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import re
 import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 
 try:
@@ -294,12 +295,97 @@ class BrowserAgent:
 
     @classmethod
     def _guess_url(cls, target: str) -> str:
-        key = re.sub(r"[^a-z0-9]+", "", target.lower())
+        """Resolve a spoken website name to a direct destination URL.
+
+        Known aliases use SITE_URLS. Unknown names are resolved via Google's
+        Feeling Lucky redirect chain, but we extract the real destination from
+        google.com/url?q=... and never hand that interstitial URL to Playwright.
+        """
+        target = (target or "").strip()
+        if not target:
+            return "https://www.google.com"
+
+        lowered = target.lower()
+        if lowered.startswith("http://") or lowered.startswith("https://"):
+            return target
+        if re.match(r"^[a-z0-9.-]+\.[a-z]{2,}(/.*)?$", lowered):
+            return "https://" + target.lstrip("/")
+
+        key = re.sub(r"[^a-z0-9]+", "", lowered)
         for alias, site in cls.SITE_ALIASES.items():
             if re.sub(r"[^a-z0-9]+", "", alias) == key:
                 return cls._site_url(site)
+
+        resolved = cls._resolve_unknown_site(target)
+        if resolved:
+            return resolved
+
+        slug = key or "google"
+        return f"https://www.{slug}.com"
+
+    @classmethod
+    def _resolve_unknown_site(cls, target: str) -> str | None:
+        """Resolve an unknown spoken site name to a direct http(s) URL."""
         query = urllib.parse.quote_plus(f"{target} official website")
-        return f"https://www.google.com/search?q={query}&btnI=1"
+        start = f"https://www.google.com/search?q={query}&btnI=1"
+        try:
+            class _StopRedirect(Exception):
+                def __init__(self, url: str) -> None:
+                    self.url = url
+
+            class _CaptureRedirect(urllib.request.HTTPRedirectHandler):
+                def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+                    raise _StopRedirect(newurl)
+
+            req = urllib.request.Request(
+                start,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/120.0.0.0 Safari/537.36"
+                    )
+                },
+            )
+            opener = urllib.request.build_opener(_CaptureRedirect())
+            try:
+                with opener.open(req, timeout=12) as resp:
+                    final = resp.geturl()
+            except _StopRedirect as stop:
+                final = stop.url
+            except Exception as exc:
+                logger.warning("site resolve failed for %r: %s", target, exc)
+                return None
+
+            direct = cls._extract_direct_destination(final)
+            if direct:
+                logger.info("resolved %r -> %s", target, direct)
+                return direct
+            host = urllib.parse.urlparse(final).netloc.lower()
+            if final.startswith("http") and "google." not in host:
+                return final
+        except Exception as exc:
+            logger.warning("site resolve error for %r: %s", target, exc)
+        return None
+
+    @staticmethod
+    def _extract_direct_destination(url: str) -> str | None:
+        """Pull the real destination out of a Google /url redirect, if present."""
+        try:
+            parsed = urllib.parse.urlparse(url)
+        except Exception:
+            return None
+        host = (parsed.netloc or "").lower()
+        if "google." not in host:
+            return None
+        if not (parsed.path or "").startswith("/url"):
+            return None
+        qs = urllib.parse.parse_qs(parsed.query or "")
+        for key in ("q", "url"):
+            for value in qs.get(key) or []:
+                if isinstance(value, str) and value.startswith("http"):
+                    return value
+        return None
 
     @staticmethod
     def _clean_term(value: str | None) -> str:
