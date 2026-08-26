@@ -89,6 +89,7 @@ class BrowserActions:
         return ok
 
     def search_current_page(self, query: str) -> bool:
+        """Search the browser Ruby controls, falling back to the user's existing Chrome."""
         query = query.strip()
         if not query:
             return False
@@ -100,6 +101,13 @@ class BrowserActions:
                 return self.search(query, site)
         except Exception:
             pass
+
+        # If Ruby's Playwright browser has no recognized page, use the already
+        # visible Chrome window rather than falling through to Gemini. This keeps
+        # natural commands useful with a browser the user already opened.
+        title = "youtube" if self._current_site == "youtube" else None
+        if self._current_site == "youtube":
+            return self._keyboard_search_existing_window(query, title)
         return False
 
     def play_youtube(self, query: str | None = None) -> bool:
