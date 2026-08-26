@@ -1,4 +1,4 @@
 """Safe, allowlisted Windows actions for the AI Screen Assistant."""
 
-# Apply browser runtime compatibility fixes as the actions package loads.
-from . import browser_runtime_patch  # noqa: F401,E402
+# Browser lifecycle and generic search live in browser_actions / browser_agent.
+# Runtime monkey-patches were removed; keep this package import light.
