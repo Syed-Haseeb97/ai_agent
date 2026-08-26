@@ -30,19 +30,35 @@ class BrowserAgent:
         self.browser = browser
 
     def execute(self, text: str) -> BrowserTaskResult:
-        original = text.strip(); q = original.lower()
-        if not q: return BrowserTaskResult(False)
-        result = self._open(q)
-        if result.handled: return result
-        result = self._search(q)
-        if result.handled: return result
-        result = self._media(q)
-        if result.handled: return result
-        result = self._navigation(q)
-        if result.handled: return result
-        result = self._interaction(original)
-        if result.handled: return result
+        original = text.strip()
+        q = original.lower()
+        if not q:
+            return BrowserTaskResult(False)
+        compound = self._compound(original)
+        if compound.handled:
+            return compound
+        for handler in (self._open, self._search, self._media, self._navigation, self._interaction):
+            result = handler(original if handler is self._interaction else q)
+            if result.handled:
+                return result
         return BrowserTaskResult(False)
+
+    def _compound(self, original: str) -> BrowserTaskResult:
+        parts = [p.strip(" .") for p in re.split(
+            r"\s+and\s+(?=(?:then\s+)?(?:play|watch|open|search|look\s+up|find|click|type|go|navigate|scroll|refresh|reload|close)\b)",
+            original,
+            flags=re.I,
+        ) if p.strip()]
+        if len(parts) < 2:
+            return BrowserTaskResult(False)
+        messages: list[str] = []
+        for part in parts:
+            result = self.execute(part)
+            if not result.handled:
+                return BrowserTaskResult(False)
+            if result.message:
+                messages.append(result.message)
+        return BrowserTaskResult(True, " ".join(messages))
 
     def _open(self, q: str) -> BrowserTaskResult:
         site = self._site_in_text(q)
@@ -60,30 +76,42 @@ class BrowserAgent:
     def _search(self, q: str) -> BrowserTaskResult:
         explicit = re.match(
             r"^(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+(?:on|in)\s+(?:this\s+|my\s+)?(youtube|yt|google|github|reddit)(?:\s+tab)?\s*$",
-            q, re.I,
+            q,
+            re.I,
         )
         if explicit:
-            term = self._clean_term(explicit.group(1)); site = self.SITE_ALIASES[explicit.group(2).lower()]
+            term = self._clean_term(explicit.group(1))
+            site = self.SITE_ALIASES[explicit.group(2).lower()]
             ok = self.browser.search(term, site)
             return BrowserTaskResult(ok, f"Searching {site} for {term}…" if ok else "")
         generic = re.match(r"^(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s*$", q, re.I)
-        if not generic: return BrowserTaskResult(False)
+        if not generic:
+            return BrowserTaskResult(False)
         term = self._clean_term(generic.group(1))
-        if not term: return BrowserTaskResult(False)
+        if not term:
+            return BrowserTaskResult(False)
         ok = self.browser.search_current_page(term)
         return BrowserTaskResult(ok, f"Searching for {term}…" if ok else "")
 
     def _media(self, q: str) -> BrowserTaskResult:
-        if not re.search(r"\b(play|watch|open)\b", q): return BrowserTaskResult(False)
+        if not re.search(r"\b(play|watch|open)\b", q):
+            return BrowserTaskResult(False)
         latest = re.search(
             r"\b(?:play|watch|open)\s+(?:the\s+)?(?:latest|newest|most\s+recent)\s+"
-            r"(?:(?:video)\s+)?(?:of|from|for)\s+(.+?)(?:\s+(?:video))?\s*(?:on\s+(?:youtube|yt))?\s*$", q, re.I)
+            r"(?:(?:video)\s+)?(?:of|from|for)\s+(.+?)(?:\s+(?:video))?\s*(?:on\s+(?:youtube|yt))?\s*$",
+            q,
+            re.I,
+        )
         if not latest:
             latest = re.search(
                 r"\b(?:play|watch|open)\s+(?:the\s+)?(?:latest|newest|most\s+recent)\s+(.+?)\s+video"
-                r"(?:\s+on\s+(?:youtube|yt))?\s*$", q, re.I)
+                r"(?:\s+on\s+(?:youtube|yt))?\s*$",
+                q,
+                re.I,
+            )
         if latest:
-            topic = self._clean_term(latest.group(1)); ok = self.browser.play_latest_youtube_video(topic or None)
+            topic = self._clean_term(latest.group(1))
+            ok = self.browser.play_latest_youtube_video(topic or None)
             return BrowserTaskResult(ok, f"Playing the latest video for {topic}…" if ok and topic else "Playing the latest video…" if ok else "")
         if re.search(r"\b(?:its|the)\s+(?:latest|newest|most\s+recent)\s+video\b", q):
             ok = self.browser.play_latest_youtube_video()
@@ -105,29 +133,34 @@ class BrowserAgent:
         )
         for pattern, action, message in checks:
             if re.search(pattern, q):
-                ok = action(); return BrowserTaskResult(ok, message if ok else "")
+                ok = action()
+                return BrowserTaskResult(ok, message if ok else "")
         return BrowserTaskResult(False)
 
     def _interaction(self, original: str) -> BrowserTaskResult:
         q = original.lower()
         click = re.match(r"\s*(?:please\s+)?click\s+(?:on\s+)?(?:the\s+)?(.+?)\s*$", original, re.I)
         if click:
-            target = self._clean_term(click.group(1)); ok = self.browser.click_text(target)
+            target = self._clean_term(click.group(1))
+            ok = self.browser.click_text(target)
             return BrowserTaskResult(ok, f"Clicking {target}…" if ok else "")
         type_match = re.match(r"\s*(?:please\s+)?type\s+(.+?)(?:\s+into\s+(?:the\s+)?(.+))?\s*$", original, re.I)
         if type_match:
-            text = self._clean_term(type_match.group(1)); target = self._clean_term(type_match.group(2) or "")
+            text = self._clean_term(type_match.group(1))
+            target = self._clean_term(type_match.group(2) or "")
             ok = self.browser.type_text(text, target or None)
             return BrowserTaskResult(ok, "Typing…" if ok else "")
         if re.search(r"\bscroll\s+(?:down|up)\b", q):
-            direction = "up" if " up" in q else "down"; ok = self.browser.scroll(direction)
+            direction = "up" if " up" in q else "down"
+            ok = self.browser.scroll(direction)
             return BrowserTaskResult(ok, f"Scrolling {direction}…" if ok else "")
         return BrowserTaskResult(False)
 
     @classmethod
     def _site_in_text(cls, q: str) -> str | None:
         for alias, site in sorted(cls.SITE_ALIASES.items(), key=lambda x: -len(x[0])):
-            if re.search(rf"\b{re.escape(alias)}\b", q): return site
+            if re.search(rf"\b{re.escape(alias)}\b", q):
+                return site
         return None
 
     @staticmethod
@@ -140,5 +173,6 @@ class BrowserAgent:
 
     @staticmethod
     def _clean_term(value: str | None) -> str:
-        if not value: return ""
+        if not value:
+            return ""
         return re.sub(r"\s+", " ", value).strip(" .?!,\"")
