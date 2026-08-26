@@ -47,11 +47,14 @@ class WindowsActionExecutor:
     def try_execute(self, text: str) -> ActionResult:
         original = text.strip(); q = original.lower()
         if not q: return ActionResult(False)
-        advanced = self.advanced.try_execute(original)
-        if advanced.handled: return ActionResult(True, advanced.message)
 
+        # Browser commands get first refusal. Natural-language browser tasks must
+        # never be intercepted by the older feature handlers and sent to Gemini.
         result = self._handle_browser_command(original, q)
         if result.handled: return result
+
+        advanced = self.advanced.try_execute(original)
+        if advanced.handled: return ActionResult(True, advanced.message)
 
         open_words = r"\b(open|launch|start|show|bring up|go to|visit|take me to)\b"
         close_words = r"\b(close|quit|exit|shut down|shut)\b"
