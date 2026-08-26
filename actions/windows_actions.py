@@ -165,13 +165,21 @@ class WindowsActionExecutor:
             if self.browser.search(term, "youtube" if site == "yt" else site):
                 return ActionResult(True, f"Searching {site} for {term}…")
 
+        # Contextual search: after Ruby has opened YouTube/Google, "search for BBS"
+        # should operate on that current page rather than falling through to Gemini.
+        current_search = re.search(r"\b(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s*$", q, re.I)
+        if current_search:
+            term = current_search.group(1).strip(" .?!")
+            if term and self.browser.search_current_page(term):
+                return ActionResult(True, f"Searching for {term}…")
+
         return ActionResult(False)
 
     @staticmethod
     def _extract_youtube_search(q: str) -> str | None:
         patterns = (
-            r"\b(?:in|on)\s+(?:this\s+)?(?:youtube|yt)(?:\s+tab)?\s+(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)(?:\s+and\s+please)?$",
-            r"\b(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+(?:on|in)\s+(?:this\s+)?(?:youtube|yt)(?:\s+tab)?(?:\s+and\s+please)?$",
+            r"\b(?:in|on)\s+(?:this\s+|my\s+)?(?:youtube|yt)(?:\s+tab)?\s+(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)(?:\s+and\s+please)?$",
+            r"\b(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+(?:on|in)\s+(?:this\s+|my\s+)?(?:youtube|yt)(?:\s+tab)?(?:\s+and\s+please)?$",
         )
         for pattern in patterns:
             match = re.search(pattern, q, re.I)
