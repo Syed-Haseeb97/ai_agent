@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from features.advanced_features import AdvancedFeatures
+from actions.browser_actions import BrowserActions
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,7 @@ class WindowsActionExecutor:
 
     def __init__(self):
         self.advanced = AdvancedFeatures()
+        self.browser = BrowserActions()
 
     def try_execute(self, text: str) -> ActionResult:
         original = text.strip()
@@ -62,6 +64,18 @@ class WindowsActionExecutor:
         advanced = self.advanced.try_execute(original)
         if advanced.handled:
             return ActionResult(True, advanced.message)
+
+        # Explicit YouTube search commands are handled locally instead of
+        # falling through to Gemini with instructions for the user. When a
+        # YouTube/Chrome window is already open, navigate the current tab;
+        # otherwise open the search URL in the default browser.
+        youtube_query = self._extract_youtube_search(q)
+        if youtube_query:
+            if self.browser.search_current_tab(youtube_query, preferred_title="youtube"):
+                return ActionResult(True, f"Searching YouTube for {youtube_query}…")
+            search_url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(youtube_query)
+            self._open_url(search_url)
+            return ActionResult(True, f"Opening YouTube and searching for {youtube_query}…")
 
         open_words = r"\b(open|launch|start|show|bring up|go to|visit|take me to)\b"
         close_words = r"\b(close|quit|exit|shut down|shut)\b"
@@ -116,6 +130,20 @@ class WindowsActionExecutor:
         if re.search(open_words + r".*\bdesktop\b", q):
             os.startfile(str(Path.home() / "Desktop")); return ActionResult(True, "Opening Desktop…")
         return ActionResult(False)
+
+    @staticmethod
+    def _extract_youtube_search(q: str) -> str | None:
+        patterns = (
+            r"\b(?:in|on)\s+(?:this\s+)?youtube(?:\s+tab)?\s+(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)(?:\s+and\s+please)?$",
+            r"\b(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+(?:on|in)\s+(?:this\s+)?youtube(?:\s+tab)?(?:\s+and\s+please)?$",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, q, re.I)
+            if match:
+                query = match.group(1).strip(" .?!")
+                if query:
+                    return query
+        return None
 
     def _handle_close_command(self, q: str, close_words: str) -> ActionResult:
         for label, executable in sorted(self.APP_PROCESSES.items(), key=lambda item: -len(item[0])):
