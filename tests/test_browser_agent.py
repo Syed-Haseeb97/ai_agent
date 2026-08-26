@@ -186,10 +186,11 @@ class BrowserAgentRoutingTests(unittest.TestCase):
         r = self.agent.execute("open someobscuresite")
         self.assertTrue(r.recognized)
         self.assertTrue(r.handled)
-        self.assertTrue(
-            any("google.com/search" in u for u in self.browser.opens),
-            msg=f"expected google lucky search, got {self.browser.opens}",
-        )
+        self.assertTrue(self.browser.opens, msg="expected a navigation")
+        opened = self.browser.opens[-1]
+        self.assertNotIn("google.com/url", opened)
+        self.assertNotIn("btnI=", opened)
+        self.assertTrue(opened.startswith("http"), opened)
 
     def test_failure_surfaces_message(self):
         self.browser.fail_next = True
@@ -206,6 +207,61 @@ class BrowserActionsWorkerImportTests(unittest.TestCase):
         ba = BrowserActions()
         self.assertIsNone(ba.last_error())
         ba.shutdown()
+
+
+class WebsiteResolverTests(unittest.TestCase):
+    """Direct destination resolution — no Google redirect interstitials."""
+
+    def test_open_vercel_resolves_direct_url(self):
+        url = BrowserAgent._guess_url("vercel")
+        self.assertTrue(url.startswith("http"))
+        self.assertIn("vercel.com", url.lower())
+        self.assertNotIn("google.com/url", url)
+        self.assertNotIn("btnI=", url)
+        self.assertNotIn("google.com/search", url)
+
+    def test_open_notion_uses_alias_direct_url(self):
+        url = BrowserAgent._guess_url("notion")
+        self.assertIn("notion", url.lower())
+        self.assertNotIn("google.com/url", url)
+        self.assertNotIn("btnI=", url)
+
+    def test_open_gemini_uses_alias_direct_url(self):
+        url = BrowserAgent._guess_url("gemini")
+        self.assertIn("gemini.google.com", url.lower())
+        self.assertNotIn("google.com/url", url)
+        self.assertNotIn("btnI=", url)
+
+    def test_open_perplexity_uses_alias_direct_url(self):
+        url = BrowserAgent._guess_url("perplexity")
+        self.assertIn("perplexity", url.lower())
+        self.assertNotIn("google.com/url", url)
+        self.assertNotIn("btnI=", url)
+
+    def test_extract_google_destination(self):
+        raw = "https://www.google.com/url?q=https://vercel.com/"
+        self.assertEqual(
+            BrowserAgent._extract_direct_destination(raw),
+            "https://vercel.com/",
+        )
+        self.assertIsNone(
+            BrowserAgent._extract_direct_destination("https://vercel.com/")
+        )
+
+    def test_agent_open_vercel_navigates_directly(self):
+        browser = FakeBrowser()
+        agent = BrowserAgent(browser)  # type: ignore[arg-type]
+        original = BrowserAgent._resolve_unknown_site
+        try:
+            BrowserAgent._resolve_unknown_site = classmethod(
+                lambda cls, target: "https://vercel.com/"
+            )
+            r = agent.execute("open vercel")
+        finally:
+            BrowserAgent._resolve_unknown_site = original
+        self.assertTrue(r.handled)
+        self.assertEqual(browser.opens[-1], "https://vercel.com/")
+        self.assertNotIn("google.com/url", browser.opens[-1])
 
 
 if __name__ == "__main__":
