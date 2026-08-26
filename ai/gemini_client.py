@@ -8,9 +8,11 @@ from pathlib import Path
 from typing import Optional
 
 try:
-    import google.generativeai as genai  # type: ignore[import-not-found]
+    from google import genai
+    from google.genai import types
 except ImportError:
     genai = None
+    types = None
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -54,29 +56,30 @@ class GeminiClient:
         key = api_key or os.getenv("GEMINI_API_KEY")
         if not key or key == "your_gemini_api_key_here":
             raise ValueError("GEMINI_API_KEY is missing. Copy .env.example to .env and add your free key from https://aistudio.google.com")
-        if genai is None:
-            raise RuntimeError("google-generativeai is not installed")
-        genai.configure(api_key=key)
-        model_candidates = ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"]
-        self.model = None
-        last_error = None
-        for name in model_candidates:
-            try:
-                self.model = genai.GenerativeModel(model_name=name, system_instruction=_load_context())
-                break
-            except Exception as e:
-                last_error = e
-        if self.model is None:
-            raise RuntimeError(f"Could not initialize any Gemini flash model. Last error: {last_error}")
+        if genai is None or types is None:
+            raise RuntimeError("google-genai is not installed")
+
+        self.client = genai.Client(api_key=key)
+        # Use a current stable Flash model rather than legacy/imaginary model names.
+        self.model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self.system_instruction = _load_context()
 
     def ask_with_screenshot(self, jpeg_bytes: bytes, user_text: str) -> str:
         if not user_text or not user_text.strip():
             user_text = "What is currently on my screen? Give a useful summary."
-        image_part = {"mime_type": "image/jpeg", "data": jpeg_bytes}
         prompt = f"User said: {user_text.strip()}"
         try:
-            response = self.model.generate_content([image_part, prompt], generation_config={"temperature": 0.4, "max_output_tokens": 900})
-            if response and response.text:
+            image_part = types.Part.from_bytes(data=jpeg_bytes, mime_type="image/jpeg")
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=[image_part, prompt],
+                config=types.GenerateContentConfig(
+                    system_instruction=self.system_instruction,
+                    temperature=0.4,
+                    max_output_tokens=900,
+                ),
+            )
+            if response and getattr(response, "text", None):
                 return response.text.strip()
             return "I received an empty reply from the model. Please try again."
         except Exception as e:
