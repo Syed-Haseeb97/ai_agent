@@ -48,9 +48,6 @@ class BrowserActions:
         persistent_chromium.mkdir(parents=True, exist_ok=True)
         chrome = self._chrome_path()
         errors: list[str] = []
-
-        # Prefer a dedicated persistent Chrome profile so normal browser logins
-        # survive restarts, but never let a locked profile take down all actions.
         attempts = []
         if chrome:
             attempts.append(("Chrome persistent", lambda: self._playwright.chromium.launch_persistent_context(
@@ -59,24 +56,18 @@ class BrowserActions:
         attempts.append(("Chromium persistent", lambda: self._playwright.chromium.launch_persistent_context(
             user_data_dir=str(persistent_chromium), headless=False, no_viewport=True,
             args=["--start-maximized"])))
-
         for label, starter in attempts:
             try:
                 self._context = starter()
                 return self._context
             except Exception as exc:
                 errors.append(f"{label}: {exc}")
-
-        # Last-resort non-persistent browser. This is intentionally separate
-        # from the persistent profile path, so a stale/locked profile cannot
-        # make even simple `open <site>` commands fail.
         launch_attempts = []
         if chrome:
             launch_attempts.append(("Chrome temporary", lambda: self._playwright.chromium.launch(
                 headless=False, executable_path=chrome, args=["--start-maximized"])))
         launch_attempts.append(("Chromium temporary", lambda: self._playwright.chromium.launch(
             headless=False, args=["--start-maximized"])))
-
         for label, starter in launch_attempts:
             try:
                 self._browser = starter()
@@ -90,7 +81,6 @@ class BrowserActions:
                     except Exception:
                         pass
                     self._browser = None
-
         try:
             self._playwright.stop()
         except Exception:
@@ -156,18 +146,24 @@ class BrowserActions:
         return ok
 
     def search_current_page(self, query: str) -> bool:
+        """Search the site currently displayed, deriving the site from the real URL.
+
+        This avoids relying on conversational state alone. If the user first says
+        `open youtube` and then `search for ...`, the actual active page decides
+        where the search goes. For unknown sites we use their visible search box.
+        """
         query = query.strip()
         if not query:
             return False
-        site = self._current_site
-        if site in {"youtube", "google", "github", "reddit", "spotify", "linkedin"}:
-            return self.search(query, site)
-
-        # Generic fallback: use the current page's search field when possible.
-        # This works for arbitrary sites without maintaining a site whitelist.
         try:
             page = self._page()
             self._bring_to_front(page)
+            url = page.url.lower()
+            site = self._site_from_url(url)
+            if site:
+                return self.search(query, site)
+            self._current_site = None
+
             selectors = (
                 "input[type='search']",
                 "input[placeholder*='Search' i]",
@@ -175,13 +171,16 @@ class BrowserActions:
                 "textarea[placeholder*='Search' i]",
             )
             for selector in selectors:
-                locator = page.locator(selector).first
-                if locator.count() and locator.is_visible():
-                    locator.fill(query, timeout=5000)
-                    locator.press("Enter", timeout=5000)
-                    return True
+                try:
+                    locator = page.locator(selector).first
+                    if locator.count() and locator.is_visible():
+                        locator.fill(query, timeout=5000)
+                        locator.press("Enter", timeout=5000)
+                        return True
+                except Exception:
+                    continue
         except Exception:
-            pass
+            return False
         return False
 
     def play_latest_youtube_video(self, query: str | None = None) -> bool:
@@ -318,8 +317,7 @@ class BrowserActions:
         return None
 
     def _remember_site(self, url: str) -> None:
-        site = self._site_from_url(url)
-        self._current_site = site
+        self._current_site = self._site_from_url(url)
 
     def shutdown(self) -> None:
         try:
