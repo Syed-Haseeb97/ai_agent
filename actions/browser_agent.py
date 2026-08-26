@@ -32,9 +32,16 @@ class BrowserAgent:
     def execute(self, text: str) -> BrowserTaskResult:
         original = text.strip(); q = original.lower()
         if not q: return BrowserTaskResult(False)
-        for handler in (self._open, self._search, self._media, self._navigation, self._interaction):
-            result = handler(original if handler is self._interaction else q)
-            if result.handled: return result
+        result = self._open(q)
+        if result.handled: return result
+        result = self._search(q)
+        if result.handled: return result
+        result = self._media(q)
+        if result.handled: return result
+        result = self._navigation(q)
+        if result.handled: return result
+        result = self._interaction(original)
+        if result.handled: return result
         return BrowserTaskResult(False)
 
     def _open(self, q: str) -> BrowserTaskResult:
@@ -51,30 +58,23 @@ class BrowserAgent:
         return BrowserTaskResult(False)
 
     def _search(self, q: str) -> BrowserTaskResult:
-        # Prefer an explicit site suffix so "search bbs on my yt" cannot be
-        # swallowed as the whole search term.
         explicit = re.match(
             r"^(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s+(?:on|in)\s+(?:this\s+|my\s+)?(youtube|yt|google|github|reddit)(?:\s+tab)?\s*$",
-            q,
-            re.I,
+            q, re.I,
         )
         if explicit:
             term = self._clean_term(explicit.group(1)); site = self.SITE_ALIASES[explicit.group(2).lower()]
             ok = self.browser.search(term, site)
             return BrowserTaskResult(ok, f"Searching {site} for {term}…" if ok else "")
-
         generic = re.match(r"^(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?(.+?)\s*$", q, re.I)
-        if not generic:
-            return BrowserTaskResult(False)
+        if not generic: return BrowserTaskResult(False)
         term = self._clean_term(generic.group(1))
-        if not term:
-            return BrowserTaskResult(False)
+        if not term: return BrowserTaskResult(False)
         ok = self.browser.search_current_page(term)
         return BrowserTaskResult(ok, f"Searching for {term}…" if ok else "")
 
     def _media(self, q: str) -> BrowserTaskResult:
         if not re.search(r"\b(play|watch|open)\b", q): return BrowserTaskResult(False)
-
         latest = re.search(
             r"\b(?:play|watch|open)\s+(?:the\s+)?(?:latest|newest|most\s+recent)\s+"
             r"(?:(?:video)\s+)?(?:of|from|for)\s+(.+?)(?:\s+(?:video))?\s*(?:on\s+(?:youtube|yt))?\s*$", q, re.I)
@@ -85,7 +85,6 @@ class BrowserAgent:
         if latest:
             topic = self._clean_term(latest.group(1)); ok = self.browser.play_latest_youtube_video(topic or None)
             return BrowserTaskResult(ok, f"Playing the latest video for {topic}…" if ok and topic else "Playing the latest video…" if ok else "")
-
         if re.search(r"\b(?:its|the)\s+(?:latest|newest|most\s+recent)\s+video\b", q):
             ok = self.browser.play_latest_youtube_video()
             return BrowserTaskResult(ok, "Playing the latest video…" if ok else "")
