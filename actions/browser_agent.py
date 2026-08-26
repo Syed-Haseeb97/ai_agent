@@ -1,4 +1,3 @@
-
 """Generic browser task planner.
 
 This module deliberately contains no site/channel/video names. It turns natural
@@ -38,6 +37,9 @@ try:
     from actions.browser_actions import BrowserActions
 except ModuleNotFoundError:  # pragma: no cover - supports direct module execution
     from .browser_actions import BrowserActions
+
+
+@dataclass(frozen=True)
 class BrowserTaskResult:
     handled: bool
     message: str = ""
@@ -127,19 +129,11 @@ class BrowserAgent:
         ok = self.browser.search_current_page(term)
         if ok:
             return BrowserTaskResult(True, f"Searching for {term}…", recognized=True)
-        return BrowserTaskResult(
-            False,
-            f"I understood you want to search for {term}, but I couldn't do it in the current browser "
-            f"context. Try 'open youtube and search for {term}' to be explicit.",
-            recognized=True,
-        )
+        return BrowserTaskResult(False, f"I understood you want to search for {term}, but I couldn't do it in the current browser context. Try 'open youtube and search for {term}' to be explicit.", recognized=True)
 
     def _media(self, q: str) -> BrowserTaskResult:
         if not re.search(r"\b(play|watch|open)\b", q):
             return BrowserTaskResult(False)
-        # "play/watch/open [the] latest/newest video [uploaded by|posted by|by|of|from|for] X"
-        # Accepts "uploaded by" / "posted by" / "by" in addition to "of/from/for" so the
-        # channel or topic name is never silently dropped.
         latest = re.search(
             r"\b(?:play|watch|open)\s+(?:the\s+)?(?:latest|newest|most\s+recent)\s+"
             r"(?:(?:video|upload)\s+)?(?:uploaded\s+by|posted\s+by|by|of|from|for)\s+(.+?)"
@@ -148,7 +142,6 @@ class BrowserAgent:
             re.I,
         )
         if not latest:
-            # "play/watch/open the latest X video" (topic stated before the word "video")
             latest = re.search(
                 r"\b(?:play|watch|open)\s+(?:the\s+)?(?:latest|newest|most\s+recent)\s+(.+?)\s+video"
                 r"(?:\s+on\s+(?:youtube|yt))?\s*$",
@@ -160,12 +153,7 @@ class BrowserAgent:
             ok = self.browser.play_latest_youtube_video(topic or None)
             if ok:
                 return BrowserTaskResult(True, f"Playing the latest video for {topic}…" if topic else "Playing the latest video…", recognized=True)
-            return BrowserTaskResult(
-                False,
-                f"I tried to play the latest video for {topic}, but the browser action failed." if topic else
-                "I tried to play the latest video, but the browser action failed.",
-                recognized=True,
-            )
+            return BrowserTaskResult(False, f"I tried to play the latest video for {topic}, but the browser action failed." if topic else "I tried to play the latest video, but the browser action failed.", recognized=True)
         if re.search(r"\b(?:its|the)\s+(?:latest|newest|most\s+recent)\s+video\b", q):
             ok = self.browser.play_latest_youtube_video()
             if ok:
