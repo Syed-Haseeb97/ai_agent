@@ -11,6 +11,7 @@ import json
 import re
 import sys
 from typing import Any
+from urllib.parse import urljoin
 
 from .amazon_browser import AmazonBrowser
 from .schemas import AmazonActionResult, AmazonOrder
@@ -50,13 +51,9 @@ class AmazonConnector:
         title: str = "",
         price: str | None = None,
         order_url: str | None = None,
+        tracking: str | None = None,
     ) -> AmazonOrder | None:
-        """Parse fields from one live Amazon order-card's visible text.
-
-        The card itself is selected with Amazon's stable-ish ``.js-order-card``
-        class. Text parsing is deliberately tolerant because Amazon changes
-        surrounding markup and wording across locales and UI revisions.
-        """
+        """Parse fields from one live Amazon order-card's visible text."""
         order_match = _ORDER_ID_RE.search(text)
         if not order_match:
             return None
@@ -66,6 +63,8 @@ class AmazonConnector:
             if re.search(rf"\b{re.escape(candidate)}\b", text, re.IGNORECASE):
                 status = candidate
                 break
+        if re.search(r"\b(?:your delivery is still on the way|on the way)\b", text, re.IGNORECASE):
+            status = "On the way"
 
         delivery_match = _DELIVERY_RE.search(text)
         tracking_match = _TRACKING_RE.search(text)
@@ -77,7 +76,7 @@ class AmazonConnector:
             price=price_match.group(0).strip() if price_match else None,
             status=status,
             delivery_date=delivery_match.group(1).strip() if delivery_match else None,
-            tracking=tracking_match.group(1).strip() if tracking_match else None,
+            tracking=(tracking or (tracking_match.group(1).strip() if tracking_match else None)),
             order_url=order_url,
         )
 
@@ -94,18 +93,10 @@ class AmazonConnector:
         href = locator.first.get_attribute("href")
         if not href:
             return None
-        if href.startswith("http://") or href.startswith("https://"):
-            return href
-        return f"{base_url.rstrip('/')}/{href.lstrip('/')}"
+        return urljoin(base_url, href)
 
     @staticmethod
     def _product_title_and_url(card) -> tuple[str, str | None]:
-        """Return the first non-empty product-link text and its URL.
-
-        Amazon currently renders an empty /dp/... image link before the
-        text-bearing /dp/... title link, so blindly taking ``.first`` can
-        produce an empty title.
-        """
         links = card.locator("a[href*='/dp/'], a[href*='/gp/product/']")
         for index in range(links.count()):
             link = links.nth(index)
@@ -117,10 +108,6 @@ class AmazonConnector:
     def list_orders(self, limit: int = 10) -> dict[str, Any]:
         self.browser.require_login()
         page = self.browser.open(AmazonBrowser.ORDERS_URL)
-
-        # Current Amazon order history exposes order cards with .js-order-card.
-        # Support both the legacy #ordersContainer layout and the newer
-        # your-orders-content-container layout seen in current Amazon UIs.
         cards = page.locator(
             "#ordersContainer > .js-order-card, "
             ".your-orders-content-container__content > .js-order-card, "
@@ -132,10 +119,7 @@ class AmazonConnector:
             return {
                 "success": False,
                 "status": "selector_discovery_required",
-                "message": (
-                    "Amazon.in orders page opened, but no .js-order-card elements "
-                    "were found. The live orders DOM may have changed."
-                ),
+                "message": "Amazon.in orders page opened, but no .js-order-card elements were found. The live orders DOM may have changed.",
                 "url": page.url,
                 "limit": limit,
             }
@@ -146,34 +130,15 @@ class AmazonConnector:
             text = card.inner_text(timeout=5_000).strip()
             if not text:
                 continue
-
-            # Amazon can render an empty image link followed by the same /dp/
-            # URL with the actual product title as link text. Choose the first
-            # non-empty product link rather than blindly taking .first.
             title, product_url = self._product_title_and_url(card)
-
-            price = self._first_text(
-                card.locator(".a-price, [class*='price'], span.a-color-price")
-            ) or None
+            price = self._first_text(card.locator(".a-price, [class*='price'], span.a-color-price")) or None
             order_link = card.locator("a[href*='orderID='], a[href*='/gp/css/summary/']")
             order_url = self._first_href(order_link, AmazonBrowser.BASE_URL)
-
-            parsed = self._parse_order_text(
-                text,
-                title=title,
-                price=price,
-                order_url=order_url or product_url,
-            )
+            parsed = self._parse_order_text(text, title=title, price=price, order_url=order_url or product_url)
             if parsed is not None:
                 orders.append(parsed.to_dict())
 
-        return {
-            "success": True,
-            "orders": orders,
-            "count": len(orders),
-            "url": page.url,
-            "limit": limit,
-        }
+        return {"success": True, "orders": orders, "count": len(orders), "url": page.url, "limit": limit}
 
     def find_order(self, query: str) -> dict[str, Any]:
         if not query.strip():
@@ -182,11 +147,7 @@ class AmazonConnector:
         if not result.get("success"):
             return result
         q = query.casefold()
-        matches = [
-            order for order in result["orders"]
-            if q in order.get("title", "").casefold()
-            or q in order.get("order_id", "").casefold()
-        ]
+        matches = [order for order in result["orders"] if q in order.get("title", "").casefold() or q in order.get("order_id", "").casefold()]
         return {"success": True, "orders": matches}
 
     def track_order(self, order_id: str) -> dict[str, Any]:
@@ -198,18 +159,53 @@ class AmazonConnector:
         matches = [o for o in result["orders"] if o.get("order_id") == order_id]
         if not matches:
             return {"success": False, "message": f"Order {order_id} was not found."}
-        return {"success": True, "order": matches[0]}
+
+        order = matches[0]
+        order_url = order.get("order_url")
+        if not order_url:
+            return {"success": True, "order": order}
+
+        page = self.browser.open(order_url)
+        page.wait_for_timeout(1_000)
+        body_text = page.locator("body").inner_text(timeout=10_000).strip()
+
+        # Amazon's order-details page can expose the human-readable delivery
+        # state and a Track package link rather than a conventional tracking ID.
+        if re.search(r"\b(?:your delivery is still on the way|on the way)\b", body_text, re.IGNORECASE):
+            order["status"] = "On the way"
+        elif re.search(r"\bDelivered\b", body_text, re.IGNORECASE):
+            order["status"] = "Delivered"
+
+        delivery_match = _DELIVERY_RE.search(body_text)
+        if delivery_match:
+            order["delivery_date"] = delivery_match.group(1).strip()
+
+        track_link = page.get_by_text("Track package", exact=True)
+        if track_link.count():
+            track_href = self._first_href(track_link, AmazonBrowser.BASE_URL)
+            if track_href:
+                order["tracking"] = track_href
+
+                # Follow the real Amazon tracking page when available and
+                # extract a conventional carrier/tracking number if Amazon
+                # exposes one there. Keep the package URL when it does not.
+                tracking_page = self.browser.open(track_href)
+                tracking_page.wait_for_timeout(1_000)
+                tracking_text = tracking_page.locator("body").inner_text(timeout=10_000).strip()
+                tracking_match = _TRACKING_RE.search(tracking_text)
+                if tracking_match:
+                    order["tracking_number"] = tracking_match.group(1).strip()
+
+        direct_tracking = _TRACKING_RE.search(body_text)
+        if direct_tracking and not order.get("tracking_number"):
+            order["tracking_number"] = direct_tracking.group(1).strip()
+
+        return {"success": True, "order": order}
 
     def cancel_order(self, order_id: str, confirmed: bool = False) -> dict[str, Any]:
         if not confirmed:
-            return AmazonActionResult(
-                success=False,
-                message="Cancellation requires explicit confirmation.",
-            ).to_dict()
-        return AmazonActionResult(
-            success=False,
-            message="Cancellation is deliberately disabled until the live Amazon.in workflow is tested.",
-        ).to_dict()
+            return AmazonActionResult(success=False, message="Cancellation requires explicit confirmation.").to_dict()
+        return AmazonActionResult(success=False, message="Cancellation is deliberately disabled until the live Amazon.in workflow is tested.").to_dict()
 
 
 def main() -> None:
