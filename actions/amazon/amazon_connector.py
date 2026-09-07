@@ -15,7 +15,7 @@ _ORDER_ID_RE = re.compile(r"\border\s*#?\s*([0-9][0-9-]{5,})\b", re.IGNORECASE)
 _DELIVERY_RE = re.compile(r"\b(?:Delivered|Arriving|Arriving on|Delivery expected|Expected)\s+([0-9]{1,2}\s+[A-Za-z]{3,9}(?:\s+[0-9]{4})?)", re.IGNORECASE)
 _PRICE_RE = re.compile(r"(?:₹|Rs\.?|INR\s*)\s*[0-9][0-9,]*(?:\.\d{1,2})?", re.IGNORECASE)
 _TRACKING_RE = re.compile(r"\b(?:tracking(?:\s+(?:id|number))?|track(?:ing)?\s*(?:#|no\.?))\s*[:#-]?\s*([A-Z0-9][A-Z0-9-]{5,})\b", re.IGNORECASE)
-_CANCEL_RE = re.compile(r"^(?:cancel(?:\s+items?|\s+order)?|request\s+cancellation)$", re.IGNORECASE)
+_CANCEL_RE = re.compile(r"^(?:cancel(?:\s+items?(?:\s+in\s+this\s+order)?|\s+order)?|request\s+cancellation)$", re.IGNORECASE)
 
 
 class AmazonConnector:
@@ -168,6 +168,17 @@ class AmazonConnector:
                     controls.append({"text": text, "href": element.get_attribute("href")})
         return controls
 
+    @staticmethod
+    def _cancellation_unavailable_message(order: dict[str, Any]) -> str:
+        status = str(order.get("status") or "").casefold()
+        if status in {"on the way", "shipped", "delivered"}:
+            return (
+                "Amazon does not currently expose a Cancel or Request Cancellation control for this order. "
+                "The order is already being processed/shipped, so no cancellation action is available from the live order page. "
+                "If Amazon offers a return after delivery, use the return workflow instead."
+            )
+        return "Amazon does not currently expose a Cancel or Request Cancellation control for this order. No cancellation action is available from the live order page."
+
     def inspect_cancellation(self, order_id: str) -> dict[str, Any]:
         if not order_id.strip():
             return {"success": False, "message": "Order ID is empty."}
@@ -182,6 +193,7 @@ class AmazonConnector:
             "order": order,
             "cancellation_available": bool(controls),
             "controls": controls,
+            "message": "Cancellation control detected on the live Amazon page." if controls else self._cancellation_unavailable_message(order),
             "url": page.url,
         }
 
@@ -196,7 +208,7 @@ class AmazonConnector:
 
         controls = self._cancel_controls(page)
         if not controls:
-            return AmazonActionResult(success=False, message="Amazon does not currently expose a Cancel or Request Cancellation control for this order.", order=order).to_dict()
+            return AmazonActionResult(success=False, message=self._cancellation_unavailable_message(order), order=order).to_dict()
 
         # Explicit confirmation has already been supplied by the caller.
         # Click only the live cancellation control Amazon exposes.
