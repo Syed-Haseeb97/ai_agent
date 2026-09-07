@@ -7,6 +7,12 @@ google-generativeai>=0.8.0
 pynput>=1.7.6
 python-dotenv>=1.0.0
 pyttsx3>=2.90
+
+# Amazon connector
+playwright>=1.50.0
+fastapi>=0.115.0
+uvicorn>=0.34.0
+
 # PyAudio is required by speech_recognition for microphone input.
 # The project currently uses PyAudioWPatch on Python 3.14.
 
