@@ -2,6 +2,8 @@
 
 Ruby is a Windows desktop AI assistant with a floating UI, voice input/output, Gemini-powered responses, and local Windows actions.
 
+> 🚧 **Active development:** The `feature/amazon-connector` branch contains the beginning of Ruby's Amazon.in integration. This work is being developed and tested separately before any merge into `main`.
+
 ## Functional runtime requirements
 
 ### 1. Windows
@@ -81,7 +83,7 @@ python -m playwright install chromium
 
 This provides a controlled Chromium browser for browser-based automation such as opening sites, searching, and future multi-step web interactions.
 
-> Playwright/Chromium are external runtime components and are intentionally separate from the core `requirements.txt` list until browser automation is part of the core startup path.
+> Playwright/Chromium are now included in `requirements.txt` for the Amazon connector work. The Chromium browser binary still needs to be installed separately with `python -m playwright install chromium`.
 
 ### PyAutoGUI — screen/mouse/keyboard automation
 
@@ -104,6 +106,67 @@ python -m pip install openwakeword numpy
 A compatible custom **“Hey Ruby”** openWakeWord model must also be supplied through `RUBY_WAKE_MODEL`. The project does **not** claim that openWakeWord itself provides a stock “Hey Ruby” model.
 
 The wake-word implementation also uses **PyAudioWPatch** for microphone capture.
+
+## Amazon.in connector — 🚧 In development
+
+Ruby is being extended with a local Amazon.in connector so the assistant can eventually interact with the user's own Amazon account through controlled browser automation.
+
+### Planned capabilities
+
+- View recent Amazon.in orders.
+- Find an order by product/order information.
+- Read order and delivery status.
+- Track an order.
+- Cancel an order **only after explicit user confirmation**.
+- Future shopping/order capabilities will use additional confirmation safeguards.
+
+### Architecture
+
+```text
+Ruby / Gemini
+      │
+      ▼
+Amazon tool layer
+      │
+      ▼
+Local Python service
+      │
+      ▼
+AmazonConnector
+      │
+      ▼
+Playwright
+      │
+      ▼
+Dedicated Chromium profile
+      │
+      ▼
+Amazon.in
+```
+
+The connector uses a **dedicated Playwright browser profile** rather than the user's normal Chrome profile. Amazon credentials are not stored in Ruby, `.env`, or the repository. The user logs into Amazon manually in the dedicated browser profile.
+
+The authenticated profile must never be committed to Git:
+
+```text
+data/amazon/browser-profile/
+```
+
+### Current development status
+
+The Amazon connector is intentionally being implemented in layers:
+
+1. Dedicated browser profile and manual Amazon login.
+2. Read-only order retrieval.
+3. Order lookup.
+4. Tracking/status retrieval.
+5. Cancellation workflow with explicit confirmation.
+6. Ruby/Gemini tool integration.
+7. End-to-end testing with the existing assistant.
+8. Review and cleanup.
+9. Merge into `main` only after testing is successful.
+
+> **Important:** Amazon's website UI can change, so browser selectors and workflows must be tested against the current Amazon.in interface. CAPTCHA or other security/anti-bot mechanisms must not be bypassed.
 
 ## API / configuration
 
@@ -142,6 +205,7 @@ RUBY_WAKE_MODEL=path-to-your-hey-ruby-model
 | F13 Multi-step commands | Project action executor; browser steps can use Playwright |
 | F14 Personality/voice preferences | Project preference system + installed voice dependencies |
 | F15 Memory | Project memory system + Gemini for relevant AI context |
+| Amazon.in connector | Playwright + Chromium + dedicated authenticated browser profile |
 
 ## Quick setup
 
@@ -155,8 +219,7 @@ python -m pip install -r requirements.txt
 Then install optional external components needed for your setup:
 
 ```powershell
-# Browser automation
-python -m pip install playwright
+# Browser automation / Amazon connector
 python -m playwright install chromium
 
 # Screen/mouse automation
@@ -165,9 +228,22 @@ python -m pip install pyautogui
 
 Install FFmpeg separately and make sure `ffmpeg` and `ffplay` work from a new PowerShell window.
 
+## API / service development
+
+The Amazon connector includes a local service intended to expose safe, explicit operations to Ruby. When the connector is ready for local testing, it can be started with:
+
+```powershell
+uvicorn services.amazon_server:app --host 127.0.0.1 --port 8765
+```
+
+The service is intentionally bound to `127.0.0.1` and should not be exposed publicly.
+
 ## Safety / compatibility notes
 
 - This is a **personal Windows assistant** and some actions directly control the local computer.
-- Keep API keys and personal configuration out of Git.
+- Keep API keys, Amazon authentication state, and personal configuration out of Git.
 - Optional automation components should be enabled/tested one feature at a time so they do not interfere with the stable voice/UI pipeline.
 - F6 wake-word support is optional and depends on a compatible local model.
+- Amazon destructive actions such as cancellation require explicit confirmation.
+- Browser automation must not bypass CAPTCHA, MFA, anti-bot protections, or other Amazon security controls.
+- Amazon connector changes are developed on a feature branch and should be merged into `main` only after successful testing and review.
