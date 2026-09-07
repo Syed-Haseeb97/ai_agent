@@ -17,6 +17,7 @@ _PRICE_RE = re.compile(r"(?:₹|Rs\.?|INR\s*)\s*[0-9][0-9,]*(?:\.\d{1,2})?", re.
 _TRACKING_RE = re.compile(r"\b(?:tracking(?:\s+(?:id|number))?|track(?:ing)?\s*(?:#|no\.?))\s*[:#-]?\s*([A-Z0-9][A-Z0-9-]{5,})\b", re.IGNORECASE)
 _CANCEL_RE = re.compile(r"^(?:cancel(?:\s+items?(?:\s+in\s+this\s+order)?|\s+order)?|request\s+cancellation)$", re.IGNORECASE)
 _RETURN_RE = re.compile(r"^(?:return(?:\s+items?)?|replace(?:\s+items?)?)$", re.IGNORECASE)
+_RETURN_REASON_RE = re.compile(r"reason|why.*return|return.*reason", re.IGNORECASE)
 
 
 class AmazonConnector:
@@ -184,6 +185,58 @@ class AmazonConnector:
         return controls
 
     @staticmethod
+    def _inspect_return_page(page) -> dict[str, Any]:
+        """Read the return page without selecting a reason or submitting anything."""
+        body = page.locator("body").inner_text(timeout=10_000).strip()
+        headings: list[str] = []
+        for index in range(page.locator("h1, h2, h3").count()):
+            try:
+                text = page.locator("h1, h2, h3").nth(index).inner_text(timeout=1_000).strip()
+            except Exception:
+                continue
+            if text and text not in headings:
+                headings.append(text)
+
+        reasons: list[str] = []
+        reason_controls = page.locator("input[type='radio'], input[type='checkbox']")
+        for index in range(reason_controls.count()):
+            control = reason_controls.nth(index)
+            try:
+                value = control.get_attribute("value")
+                aria = control.get_attribute("aria-label")
+                name = control.get_attribute("name")
+                control_id = control.get_attribute("id")
+                label = ""
+                if control_id:
+                    label_locator = page.locator(f"label[for='{control_id}']")
+                    if label_locator.count():
+                        label = label_locator.first.inner_text(timeout=1_000).strip()
+                text = label or aria or value
+                if text and (name or "reason" in text.casefold() or _RETURN_REASON_RE.search(text)) and text not in reasons:
+                    reasons.append(text)
+            except Exception:
+                continue
+
+        actions: list[dict[str, str | None]] = []
+        for locator in (page.get_by_role("button"), page.get_by_role("link")):
+            for index in range(locator.count()):
+                element = locator.nth(index)
+                try:
+                    text = element.inner_text(timeout=1_000).strip()
+                except Exception:
+                    continue
+                if text:
+                    actions.append({"text": text, "href": element.get_attribute("href")})
+
+        return {
+            "url": page.url,
+            "headings": headings,
+            "body_preview": body[:4000],
+            "reason_options": reasons,
+            "actions": actions,
+        }
+
+    @staticmethod
     def _cancellation_unavailable_message(order: dict[str, Any]) -> str:
         status = str(order.get("status") or "").casefold()
         if status in {"on the way", "shipped", "delivered"}:
@@ -213,7 +266,7 @@ class AmazonConnector:
         }
 
     def inspect_return(self, order_id: str) -> dict[str, Any]:
-        """Inspect the live return/replace entry point without submitting a return."""
+        """Open the live Return items workflow and inspect its next page without submitting."""
         if not order_id.strip():
             return {"success": False, "message": "Order ID is empty."}
         page, order = self._get_order(order_id)
@@ -234,11 +287,18 @@ class AmazonConnector:
             result["message"] = "Amazon does not currently expose a Return or Replace control for this order."
             return result
 
-        # Inspect only. Clicking the entry point may create a return request,
-        # so this intentionally stops before any state-changing action.
         control = controls[0]
-        result["message"] = "Amazon exposes a Return/Replace entry point on the live order page. No return request was submitted."
-        result["return_url"] = control.get("href")
+        return_url = control.get("href")
+        if not return_url:
+            result["message"] = "Amazon exposes Return items, but no navigable return URL was available."
+            return result
+
+        return_page = self.browser.open(urljoin(page.url, return_url))
+        return_page.wait_for_timeout(1_500)
+        workflow = self._inspect_return_page(return_page)
+        result["return_url"] = return_page.url
+        result["workflow"] = workflow
+        result["message"] = "Live Return items workflow inspected. No return reason was selected and no return/refund request was submitted."
         return result
 
     def cancel_order(self, order_id: str, confirmed: bool = False) -> dict[str, Any]:
