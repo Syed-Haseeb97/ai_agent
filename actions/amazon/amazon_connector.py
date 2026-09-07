@@ -16,6 +16,7 @@ _DELIVERY_RE = re.compile(r"\b(?:Delivered|Arriving|Arriving on|Delivery expecte
 _PRICE_RE = re.compile(r"(?:₹|Rs\.?|INR\s*)\s*[0-9][0-9,]*(?:\.\d{1,2})?", re.IGNORECASE)
 _TRACKING_RE = re.compile(r"\b(?:tracking(?:\s+(?:id|number))?|track(?:ing)?\s*(?:#|no\.?))\s*[:#-]?\s*([A-Z0-9][A-Z0-9-]{5,})\b", re.IGNORECASE)
 _CANCEL_RE = re.compile(r"^(?:cancel(?:\s+items?(?:\s+in\s+this\s+order)?|\s+order)?|request\s+cancellation)$", re.IGNORECASE)
+_RETURN_RE = re.compile(r"^(?:return(?:\s+items?)?|replace(?:\s+items?)?)$", re.IGNORECASE)
 
 
 class AmazonConnector:
@@ -169,6 +170,20 @@ class AmazonConnector:
         return controls
 
     @staticmethod
+    def _return_controls(page) -> list[dict[str, str | None]]:
+        controls = []
+        for locator in (page.get_by_role("button"), page.get_by_role("link")):
+            for index in range(locator.count()):
+                element = locator.nth(index)
+                try:
+                    text = element.inner_text(timeout=1_000).strip()
+                except Exception:
+                    continue
+                if _RETURN_RE.search(text):
+                    controls.append({"text": text, "href": element.get_attribute("href")})
+        return controls
+
+    @staticmethod
     def _cancellation_unavailable_message(order: dict[str, Any]) -> str:
         status = str(order.get("status") or "").casefold()
         if status in {"on the way", "shipped", "delivered"}:
@@ -197,6 +212,35 @@ class AmazonConnector:
             "url": page.url,
         }
 
+    def inspect_return(self, order_id: str) -> dict[str, Any]:
+        """Inspect the live return/replace entry point without submitting a return."""
+        if not order_id.strip():
+            return {"success": False, "message": "Order ID is empty."}
+        page, order = self._get_order(order_id)
+        if order is None:
+            return {"success": False, "message": f"Order {order_id} was not found."}
+        if page is None:
+            return {"success": False, "message": "Order has no details URL."}
+
+        controls = self._return_controls(page)
+        result: dict[str, Any] = {
+            "success": True,
+            "order": order,
+            "return_available": bool(controls),
+            "controls": controls,
+            "url": page.url,
+        }
+        if not controls:
+            result["message"] = "Amazon does not currently expose a Return or Replace control for this order."
+            return result
+
+        # Inspect only. Clicking the entry point may create a return request,
+        # so this intentionally stops before any state-changing action.
+        control = controls[0]
+        result["message"] = "Amazon exposes a Return/Replace entry point on the live order page. No return request was submitted."
+        result["return_url"] = control.get("href")
+        return result
+
     def cancel_order(self, order_id: str, confirmed: bool = False) -> dict[str, Any]:
         if not confirmed:
             return AmazonActionResult(success=False, message="Cancellation requires explicit confirmation.").to_dict()
@@ -210,8 +254,6 @@ class AmazonConnector:
         if not controls:
             return AmazonActionResult(success=False, message=self._cancellation_unavailable_message(order), order=order).to_dict()
 
-        # Explicit confirmation has already been supplied by the caller.
-        # Click only the live cancellation control Amazon exposes.
         matching = None
         for text in ("Cancel items", "Cancel order", "Request cancellation", "Cancel"):
             for control in page.get_by_text(text, exact=True).all():
@@ -225,7 +267,6 @@ class AmazonConnector:
         matching.click()
         page.wait_for_timeout(1_000)
 
-        # Amazon may present a final confirmation button/dialog after the first click.
         final_names = ("Cancel selected items in this order", "Cancel selected items", "Request cancellation", "Confirm cancellation", "Cancel order")
         final_button = None
         for name in final_names:
@@ -255,6 +296,7 @@ def main() -> None:
     parser.add_argument("--find-order")
     parser.add_argument("--track")
     parser.add_argument("--inspect-cancel")
+    parser.add_argument("--inspect-return")
     parser.add_argument("--cancel")
     parser.add_argument("--confirmed", action="store_true", help="Explicitly confirm the destructive cancellation action")
     args = parser.parse_args()
@@ -270,6 +312,8 @@ def main() -> None:
             result = connector.track_order(args.track)
         elif args.inspect_cancel:
             result = connector.inspect_cancellation(args.inspect_cancel)
+        elif args.inspect_return:
+            result = connector.inspect_return(args.inspect_return)
         elif args.cancel:
             result = connector.cancel_order(args.cancel, confirmed=args.confirmed)
         else:
