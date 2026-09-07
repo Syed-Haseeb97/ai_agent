@@ -98,6 +98,22 @@ class AmazonConnector:
             return href
         return f"{base_url.rstrip('/')}/{href.lstrip('/')}"
 
+    @staticmethod
+    def _product_title_and_url(card) -> tuple[str, str | None]:
+        """Return the first non-empty product-link text and its URL.
+
+        Amazon currently renders an empty /dp/... image link before the
+        text-bearing /dp/... title link, so blindly taking ``.first`` can
+        produce an empty title.
+        """
+        links = card.locator("a[href*='/dp/'], a[href*='/gp/product/']")
+        for index in range(links.count()):
+            link = links.nth(index)
+            text = link.inner_text(timeout=3_000).strip()
+            if text:
+                return text, AmazonConnector._first_href(link, AmazonBrowser.BASE_URL)
+        return "", None
+
     def list_orders(self, limit: int = 10) -> dict[str, Any]:
         self.browser.require_login()
         page = self.browser.open(AmazonBrowser.ORDERS_URL)
@@ -131,14 +147,11 @@ class AmazonConnector:
             if not text:
                 continue
 
-            # Prefer an actual product link for the title. Amazon's generated
-            # code confirmed /dp/... links are present on the user's live card.
-            product_link = card.locator("a[href*='/dp/'], a[href*='/gp/product/']")
-            title = self._first_text(product_link)
-            product_url = self._first_href(product_link, AmazonBrowser.BASE_URL)
+            # Amazon can render an empty image link followed by the same /dp/
+            # URL with the actual product title as link text. Choose the first
+            # non-empty product link rather than blindly taking .first.
+            title, product_url = self._product_title_and_url(card)
 
-            # Keep title extraction conservative: use the first product link,
-            # rather than accidentally returning buttons such as Buy it again.
             price = self._first_text(
                 card.locator(".a-price, [class*='price'], span.a-color-price")
             ) or None
