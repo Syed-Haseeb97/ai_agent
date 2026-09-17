@@ -1,1 +1,5 @@
-Commit 2 content - dummy file for contribution
+Updated content for commit 2
+
+This is some meaningful text written into the file.
+Exploring AI agents and Python tooling.
+Keep building.
