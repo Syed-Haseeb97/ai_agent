@@ -1,5 +1,5 @@
-Updated content for commit 6
+Second update for commit 6
 
-This is some meaningful text written into the file.
-Software that responds vs software that acts.
-AI agent development notes.
+Edited again with fresh content.
+Respond vs act — build agents that do both.
+Development notes and experiments.
