@@ -1,5 +1,5 @@
-Second update for commit 6
+Third edit for commit 6
 
-Edited again with fresh content.
-Respond vs act — build agents that do both.
-Development notes and experiments.
+Re-edited with new notes.
+Agents that respond and act.
+Ongoing experiments.
