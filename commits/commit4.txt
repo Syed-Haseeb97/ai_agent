@@ -1,1 +1,5 @@
-Commit 4 content - dummy file for contribution
+Updated content for commit 4
+
+This is some meaningful text written into the file.
+Learning Python and building AI tools.
+Contribution graph growth.
