@@ -1,1 +1,5 @@
-Commit 8 content - dummy file for contribution
+Updated content for commit 8
+
+This is some meaningful text written into the file.
+LeetCode practice and coding challenges.
+Consistent daily contributions.
