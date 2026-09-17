@@ -1,5 +1,5 @@
-Second update for commit 2
+Third edit for commit 2
 
-Edited again with fresh content.
-Python tooling and agent experiments.
-Ship fast, iterate faster.
+Re-edited with new notes.
+Python tooling + agent experiments.
+Ship and iterate.
