@@ -1,5 +1,5 @@
-Updated content for commit 5
+Second update for commit 5
 
-This is some meaningful text written into the file.
-IIIT Trichy CSE journey and projects.
-Keep shipping.
+Edited again with fresh content.
+IIIT Trichy CSE'30 path and projects.
+Always shipping.
