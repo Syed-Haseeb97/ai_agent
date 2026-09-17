@@ -1,5 +1,5 @@
-Updated content for commit 3
+Second update for commit 3
 
-This is some meaningful text written into the file.
-STEM portfolio and computer science projects.
-Future entrepreneur mindset.
+Edited again with fresh content.
+STEM + CS projects and portfolio work.
+Entrepreneurship in progress.
