@@ -1,5 +1,5 @@
-Second update for commit 5
+Third edit for commit 5
 
-Edited again with fresh content.
-IIIT Trichy CSE'30 path and projects.
-Always shipping.
+Re-edited with new notes.
+IIIT Trichy CSE'30 journey.
+Always shipping code.
