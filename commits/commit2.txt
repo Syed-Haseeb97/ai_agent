@@ -1,5 +1,0 @@
-Third edit for commit 2
-
-Re-edited with new notes.
-Python tooling + agent experiments.
-Ship and iterate.
