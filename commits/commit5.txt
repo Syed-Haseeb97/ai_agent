@@ -1,1 +1,5 @@
-Commit 5 content - dummy file for contribution
+Updated content for commit 5
+
+This is some meaningful text written into the file.
+IIIT Trichy CSE journey and projects.
+Keep shipping.
