@@ -28,7 +28,8 @@ The core Python dependencies are listed in `requirements.txt` and include:
 - **Pillow** — image/screenshot handling.
 - **SpeechRecognition** — speech-to-text interface.
 - **edge-tts** — text-to-speech.
-- **google-generativeai** — Gemini API integration.
+- **google-generativeai** — legacy Gemini response/vision integration.
+- **google-genai** — Gemini Interactions API and Computer Use integration (F16).
 - **pynput** — keyboard/hotkey handling.
 - **python-dotenv** — `.env` configuration.
 - **pyttsx3** — local TTS support/fallback.
@@ -171,3 +172,34 @@ Install FFmpeg separately and make sure `ffmpeg` and `ffplay` work from a new Po
 - Keep API keys and personal configuration out of Git.
 - Optional automation components should be enabled/tested one feature at a time so they do not interfere with the stable voice/UI pipeline.
 - F6 wake-word support is optional and depends on a compatible local model.
+
+## F16 — Autonomous Computer Use mode
+
+Ruby can now run a long-lived desktop objective without requiring a new voice/UI activation after every screen change. The feature uses Gemini Computer Use through the Interactions API, captures the current Windows desktop, executes model-generated UI actions with PyAutoGUI, captures the resulting screen, and continues the same interaction until the task finishes or a safety boundary/limit is reached.
+
+Start it with a natural-language objective:
+
+```powershell
+python autonomous_agent.py "Watch Anti-Gravity and keep the current task moving. Handle routine in-app permission prompts needed to continue. Stop if something requires a consequential or ambiguous decision."
+```
+
+For a run that should continue while you are away, keep the Windows desktop **awake, unlocked, and interactive**. The agent cannot reliably operate a locked Windows session, and Windows security/UAC prompts may be outside ordinary user-mode screen automation.
+
+Emergency stop: **Ctrl+Alt+Shift+R**.
+
+Useful limits:
+
+```powershell
+python autonomous_agent.py --max-hours 2 --max-turns 80 "Finish the current routine task and stop when complete."
+```
+
+Environment variables:
+
+```text
+GEMINI_API_KEY=your_key
+RUBY_COMPUTER_USE_MODEL=gemini-3.8-flash
+```
+
+F16 intentionally stops instead of autonomously handling payments, account/login flows, passwords or OTPs, CAPTCHAs, legal/consent actions, external communications, or destructive data changes. Gemini safety decisions requiring confirmation also stop the unattended run.
+
+> **Cost/safety:** Computer Use is an agentic API capability and each turn can consume Gemini API usage. Start with short, bounded runs. Google recommends a sandboxed environment and close supervision for important tasks.
