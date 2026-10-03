@@ -16,6 +16,7 @@
 - **F13** Multi-step commands: chains separated by `then` / `and then` are executed through the existing allowlisted action executor.
 - **F14** Personality/voice preferences: `set personality to concise` and `set voice to british`.
 - **F15** Memory: `remember that ...` and `what do you remember`; saved memory is supplied to Gemini when relevant.
+- **F16** Autonomous Computer Use: long-running Gemini desktop control with screenshot → action → screenshot looping, routine UI continuation, safety boundaries, runtime/turn limits, and Ctrl+Alt+Shift+R emergency stop.
 
 ## External requirements
 - F5: install FFmpeg so both `ffmpeg` and `ffplay` are on PATH.
