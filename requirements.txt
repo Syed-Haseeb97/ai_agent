@@ -4,15 +4,16 @@ Pillow>=10.0.0
 speechrecognition>=3.10.0
 edge-tts>=6.1.9
 google-generativeai>=0.8.0
+google-genai>=2.7.0
 pynput>=1.7.6
 python-dotenv>=1.0.0
 pyttsx3>=2.90
 # PyAudio is required by speech_recognition for microphone input.
 # The project currently uses PyAudioWPatch on Python 3.14.
 
-# Optional F12 screen-click automation:
+# F12 / F16 screen automation:
 # pyautogui>=0.9.54
-# Optional F6 local wake-word support (Python/platform compatibility may vary):
+# Optional F6 local wake-word support:
 # openwakeword>=0.6.0
 # numpy>=1.26
 # F5 screen recording uses ffmpeg/ffplay installed separately and available on PATH.
