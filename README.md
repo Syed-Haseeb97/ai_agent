@@ -86,7 +86,7 @@ This provides a controlled Chromium browser for browser-based automation such as
 
 ### PyAutoGUI — screen/mouse/keyboard automation
 
-Optional for F12 coordinate-based screen interaction:
+Required for F16 autonomous desktop control and optional for F12 coordinate-based screen interaction:
 
 ```powershell
 python -m pip install pyautogui
