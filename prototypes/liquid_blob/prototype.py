@@ -256,7 +256,8 @@ class LiquidBlob(QWidget):
             blink = max(0.06, abs(blink_cycle - 0.08) / 0.08)
         elif 0.16 <= blink_cycle < 0.24:
             blink = max(0.06, (blink_cycle - 0.16) / 0.08)
-        eye_h *= blink
+        if mood != Mood.HAPPY:
+            eye_h *= blink
 
         # Thinking eyes briefly narrow and glance up/sideways like a thinking emoji.
         if mood == Mood.THINKING:
