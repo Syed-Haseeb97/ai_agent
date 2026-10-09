@@ -103,7 +103,7 @@ class LiquidBlob(QWidget):
             self._thinking_pos.setY(self._thinking_pos.y() + self._thinking_vel.y() * dt)
 
             # Keep the simulated mass inside the imaginary four-sided boundary.
-            limit = 0.86
+            limit = 1.05
             self._thinking_pos.setX(max(-limit, min(limit, self._thinking_pos.x())))
             self._thinking_pos.setY(max(-limit, min(limit, self._thinking_pos.y())))
 
