@@ -11,6 +11,15 @@ class PolicyDecision:
     reason: str = ""
 
 
+# Keep this in sync with WindowsComputerExecutor. Unknown tool names must never
+# reach the desktop executor just because the model supplied them.
+ALLOWED_ACTIONS = frozenset({
+    "click", "click_at", "double_click", "triple_click", "middle_click",
+    "right_click", "move", "mouse_down", "mouse_up", "type", "type_text_at",
+    "press_key", "key_down", "key_up", "hotkey", "drag_and_drop", "drag",
+    "scroll", "long_press", "wait", "take_screenshot",
+})
+
 BLOCKED_INTENT_TERMS = (
     "captcha", "terms of service", "privacy policy", "cookie consent",
     "accept terms", "purchase", "buy", "checkout", "payment", "transfer money",
@@ -21,11 +30,14 @@ BLOCKED_INTENT_TERMS = (
 
 
 class AutonomousPolicy:
-    """Allow routine UI automation but stop before consequential actions."""
+    """Allow known routine UI actions, but stop before consequential actions."""
 
     def check_action(self, name: str, arguments: dict[str, Any]) -> PolicyDecision:
         if not isinstance(arguments, dict):
             return PolicyDecision(False, "Blocked: action arguments must be an object.")
+
+        if name not in ALLOWED_ACTIONS:
+            return PolicyDecision(False, f"Blocked: unsupported Computer Use action {name!r}.")
 
         safety = arguments.get("safety_decision")
         if safety is not None:
@@ -33,13 +45,20 @@ class AutonomousPolicy:
                 return PolicyDecision(False, "Blocked: malformed Computer Use safety decision.")
             decision = str(safety.get("decision", "")).strip().lower()
             if decision == "require_confirmation":
-                return PolicyDecision(False, str(safety.get("explanation") or "Computer Use requires user confirmation."))
+                return PolicyDecision(
+                    False,
+                    str(safety.get("explanation") or "Computer Use requires user confirmation."),
+                )
             if decision == "blocked":
-                return PolicyDecision(False, str(safety.get("explanation") or "Computer Use safety system blocked this action."))
-            if decision and decision not in {"allow", "allowed", "regular"}:
-                return PolicyDecision(False, f"Blocked: unrecognized Computer Use safety decision {decision!r}.")
-            if not decision:
-                return PolicyDecision(False, "Blocked: Computer Use safety decision has no decision value.")
+                return PolicyDecision(
+                    False,
+                    str(safety.get("explanation") or "Computer Use safety system blocked this action."),
+                )
+            if decision not in {"allow", "allowed", "regular"}:
+                return PolicyDecision(
+                    False,
+                    f"Blocked: unrecognized or missing Computer Use safety decision {decision!r}.",
+                )
 
         intent = str(arguments.get("intent", "")).casefold()
         text = f"{name} {intent}"
