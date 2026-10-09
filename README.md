@@ -2,6 +2,10 @@
 
 Ruby is a Windows desktop AI assistant with a floating UI, voice input/output, Gemini-powered responses, and local Windows actions.
 
+## Ruby's floating orb
+
+The floating assistant now uses the glossy animated `LiquidBlob` renderer in `ui/liquid_blob.py`. Its visuals follow the real assistant state: Idle, Listening, Thinking (faceless rotating sphere), Speaking, and Error. The standalone visual playground remains available at `prototypes/liquid_blob/prototype.py` for previewing all character moods.
+
 ## Functional runtime requirements
 
 ### 1. Windows
