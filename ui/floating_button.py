@@ -33,6 +33,7 @@ class FloatingButton(QWidget):
     sig_user = pyqtSignal(int, str)
     sig_response = pyqtSignal(int, str)
     sig_state = pyqtSignal(int, object)
+    sig_emotion = pyqtSignal(int, str)
     sig_error = pyqtSignal(int, str)
     sig_finished = pyqtSignal(int)
 
@@ -54,6 +55,7 @@ class FloatingButton(QWidget):
         self._run_id = 0
         self._response_ready: dict[int, threading.Event] = {}
         self._continuous_mode = False
+        self._response_emotion = "neutral"
 
         screen = QApplication.primaryScreen().availableGeometry()
         self.move(screen.right() - 100, 34)
@@ -92,6 +94,7 @@ class FloatingButton(QWidget):
         self.sig_user.connect(self._on_user)
         self.sig_response.connect(self._on_response)
         self.sig_state.connect(self._on_state)
+        self.sig_emotion.connect(self._on_emotion)
         self.sig_error.connect(self._on_error)
         self.sig_finished.connect(self._on_finished)
         self.response_popup.submitted.connect(self.submit_text)
@@ -155,10 +158,21 @@ class FloatingButton(QWidget):
             State.IDLE: Mood.IDLE,
             State.LISTENING: Mood.LISTENING,
             State.THINKING: Mood.THINKING,
-            State.SPEAKING: Mood.SPEAKING,
+            State.SPEAKING: {
+                "neutral": Mood.SPEAKING,
+                "happy": Mood.HAPPY,
+                "excited": Mood.EXCITED,
+                "sad": Mood.SAD,
+                "empathetic": Mood.EMPATHETIC,
+                "curious": Mood.CURIOUS,
+                "surprised": Mood.SURPRISED,
+            }.get(self._response_emotion, Mood.SPEAKING),
             State.ERROR: Mood.ERROR,
         }
+        if state != State.SPEAKING:
+            self._response_emotion = "neutral"
         self.blob.set_mood(mood_map[state])
+        self.blob.set_speaking_active(state == State.SPEAKING)
         self.blob.set_thinking_spin_active(state == State.THINKING)
         self.blob.update()
 
@@ -226,6 +240,7 @@ class FloatingButton(QWidget):
 
             action=self.action_executor.try_execute(user_text)
             if action.handled:
+                self.sig_emotion.emit(run_id, "neutral")
                 self.sig_response.emit(run_id,action.message)
                 self._wait_for_response_ui(run_id)
                 if not self._is_current(run_id): return
@@ -239,8 +254,9 @@ class FloatingButton(QWidget):
             jpeg_bytes,_=capture_primary_screen()
             if not self._is_current(run_id): return
             if self._gemini is None: self._gemini=GeminiClient()
-            answer=self._gemini.ask_with_screenshot(jpeg_bytes,user_text)
+            answer, emotion = self._gemini.ask_with_screenshot_and_emotion(jpeg_bytes,user_text)
             if not self._is_current(run_id): return
+            self.sig_emotion.emit(run_id, emotion)
             self.sig_response.emit(run_id,answer)
             self._wait_for_response_ui(run_id)
             if not self._is_current(run_id): return
@@ -256,6 +272,13 @@ class FloatingButton(QWidget):
 
     def _on_state(self,run_id,state):
         if self._is_current(run_id): self._set_state(state)
+
+    def _on_emotion(self, run_id, emotion):
+        if not self._is_current(run_id):
+            return
+        from ai.emotion import normalize_emotion
+        self._response_emotion = normalize_emotion(emotion)
+
     def _on_status(self,run_id,text):
         if not self._is_current(run_id): return
         if text: self.status_popup.show_message(text,self.pos())
