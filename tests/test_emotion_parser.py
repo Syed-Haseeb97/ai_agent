@@ -41,7 +41,7 @@ class EmotionParserTests(unittest.TestCase):
 
     def test_preamble_around_json_is_supported(self):
         answer, emotion = parse_emotion_response(
-            'Here is the result:\\n{"response": "Take your time.", "emotion": "empathetic"}\\nDone.'
+            'Here is the result:\n{"response": "Take your time.", "emotion": "empathetic"}\nDone.'
         )
         self.assertEqual(answer, "Take your time.")
         self.assertEqual(emotion, "empathetic")
