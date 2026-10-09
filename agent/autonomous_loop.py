@@ -160,3 +160,8 @@ class AutonomousAgent:
             return AgentRunResult("turn_limit", self.max_turns, "Maximum autonomous turn count reached.")
         except Exception as exc:
             return AgentRunResult("error", 0, f"Autonomous run failed safely: {type(exc).__name__}: {str(exc)[:240]}")
+        finally:
+            if self.stop_event.is_set():
+                cleanup = getattr(self.executor, "release_held_inputs", None)
+                if callable(cleanup):
+                    cleanup()
