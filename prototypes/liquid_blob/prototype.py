@@ -566,7 +566,7 @@ class MainWindow(QMainWindow):
         self.choose_mood(Mood.IDLE)
 
     def run_prompt_lifecycle_demo(self) -> None:
-        \"\"\"Preview prompt-event spin transitions without calling an AI backend.\"\"\"
+        """Preview prompt-event spin transitions without calling an AI backend."""
         prompt = self.prompt_input.text().strip()
         if not prompt:
             return
@@ -578,7 +578,7 @@ class MainWindow(QMainWindow):
         stage = self._prompt_stage
         self.blob.set_mood(Mood.THINKING)
         self.blob.set_thinking_spin_active(True)
-        self.state_label.setText(\"SENDING  ·  spinning while prompt is sent\")
+        self.state_label.setText("SENDING  ·  spinning while prompt is sent")
 
         def schedule(delay_ms: int, callback) -> None:
             timer = QTimer(self)
@@ -587,8 +587,8 @@ class MainWindow(QMainWindow):
             timer.start(delay_ms)
             self._prompt_timers.append(timer)
 
-        schedule(650, lambda: self._set_prompt_stage(stage, False, \"DELIVERED  ·  spin pauses\"))
-        schedule(1050, lambda: self._set_prompt_stage(stage, True, \"THINKING  ·  Ruby received the prompt\"))
+        schedule(650, lambda: self._set_prompt_stage(stage, False, "DELIVERED  ·  spin pauses"))
+        schedule(1050, lambda: self._set_prompt_stage(stage, True, "THINKING  ·  Ruby received the prompt"))
         schedule(2850, lambda: self._finish_prompt_stage(stage))
 
     def _set_prompt_stage(self, stage: int, spinning: bool, label: str) -> None:
@@ -602,7 +602,7 @@ class MainWindow(QMainWindow):
             return
         self.blob.set_thinking_spin_active(False)
         self.blob.set_mood(Mood.IDLE)
-        self.state_label.setText(\"RESPONSE READY  ·  spin stopped\")
+        self.state_label.setText("RESPONSE READY  ·  spin stopped")
 
     def choose_mood(self, mood: Mood) -> None:
         self._prompt_stage += 1
