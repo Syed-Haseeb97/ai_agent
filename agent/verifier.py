@@ -207,7 +207,7 @@ def verify_goal_file_outputs(goal: str) -> tuple[bool, str] | None:
 
     quoted_text = None
     match = re.search(
-        r"\b(?:type|write|enter|contain|contents? of)\b.{0,60}['\"]([^'\"]{1,200})['\"]",
+        r"\b(?:type|write|enter|contain|contents? of)\b.{0,60}?['\"]([^'\"]{1,200})['\"]",
         goal, re.I | re.S,
     )
     if match:
