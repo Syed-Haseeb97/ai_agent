@@ -141,7 +141,16 @@ class LiquidBlob(QWidget):
         elif self.mood == Mood.SAD:
             cy += 3 + abs(breathe) * 3
         elif self.mood == Mood.THINKING:
-            cx += math.sin(t * 1.2) * 2.8
+            # Let the silhouette subtly follow the same held gaze targets.
+            phase = t % 4.8
+            targets = (6.5, -3.0, 4.0)
+            idx = int(phase // 1.6) % 3
+            nxt = (idx + 1) % 3
+            local = phase % 1.6
+            u = min(1.0, max(0.0, (local - 1.25) / 0.35))
+            u = u * u * (3.0 - 2.0 * u)
+            gaze_lean = targets[idx] + (targets[nxt] - targets[idx]) * u
+            cx += gaze_lean * 0.18
         elif self.mood == Mood.ERROR:
             cx += math.sin(t * 12.0) * 2.0
 
