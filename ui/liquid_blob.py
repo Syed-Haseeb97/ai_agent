@@ -417,9 +417,10 @@ class LiquidBlob(QWidget):
                 painter.drawEllipse(eye_rect)
             painter.restore()
 
-        if mood == Mood.SPEAKING or self._speaking_active:
-            # A readable, softly animated rose-lilac mouth: larger than a dot,
-            # but still restrained, with a dark plum edge against the black core.
+        if mood == Mood.SPEAKING:
+            # Neutral speech gets the animated rose-lilac mouth. Emotional moods
+            # keep their own mouth shape below while _speaking_active drives the
+            # overall talking state, so speech never erases the chosen expression.
             voice = (math.sin(t * 11.0) + 1.0) / 2.0
             mouth_w = r * (0.19 + voice * 0.035)
             mouth_h = r * (0.055 + abs(math.sin(t * 11.0)) * 0.075)
