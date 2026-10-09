@@ -38,7 +38,7 @@ MOOD_COLORS = {
     Mood.SPEAKING: (QColor("#60a5fa"), QColor("#7c3aed")),
     Mood.HAPPY: (QColor("#c084fc"), QColor("#3b82f6")),
     Mood.SAD: (QColor("#60a5fa"), QColor("#60a5fa")),
-    Mood.ERROR: (QColor("#fb7185"), QColor("#e11d48")),
+    Mood.ERROR: (QColor("#ff526b"), QColor("#b91235")),
 }
 
 
@@ -173,14 +173,11 @@ class LiquidBlob(QWidget):
         core_radius = radius * 0.63
 
         body = self._body_path(cx, cy, radius, t)
-        # A broad, moving highlight gives the body a living, liquid sheen.
-        # Error intentionally skips the highlight and stays uniformly warning-red.
+        # A broad, moving highlight gives every mood a living, liquid sheen.
+        # Error keeps the same glossy motion, recolored into its warning-red theme.
         highlight_x = cx + math.cos(t * 0.72) * radius * 0.24
         highlight_y = cy + math.sin(t * 0.58) * radius * 0.22
-        gradient = QRadialGradient(
-            QPointF(cx, cy) if self.mood == Mood.ERROR else QPointF(highlight_x, highlight_y),
-            radius * 1.38,
-        )
+        gradient = QRadialGradient(QPointF(highlight_x, highlight_y), radius * 1.38)
         if self.mood == Mood.SAD:
             # Keep the sad fluid clean blue; no charcoal/navy shading in its body.
             gradient.setColorAt(0.0, QColor("#b9ddff"))
@@ -188,10 +185,13 @@ class LiquidBlob(QWidget):
             gradient.setColorAt(0.58, QColor("#60a5fa"))
             gradient.setColorAt(1.0, QColor("#60a5fa"))
         elif self.mood == Mood.ERROR:
-            # Solid vivid warning red: no moving highlight or gradient shade.
-            error_red = QColor("#f00024")
-            gradient.setColorAt(0.0, error_red)
-            gradient.setColorAt(1.0, error_red)
+            # Glossy warning-red palette: bright moving sheen, saturated red body,
+            # and a deeper crimson edge. The ambient halo and cast shadow stay off.
+            gradient.setColorAt(0.0, QColor("#ff9aa8"))
+            gradient.setColorAt(0.18, QColor("#ff647b"))
+            gradient.setColorAt(0.42, QColor("#ff304f"))
+            gradient.setColorAt(0.72, QColor("#e7193c"))
+            gradient.setColorAt(1.0, QColor("#b91235"))
         else:
             gradient.setColorAt(0.0, primary.lighter(175))
             gradient.setColorAt(0.22, primary.lighter(135))
@@ -418,7 +418,7 @@ class MainWindow(QMainWindow):
             Mood.SPEAKING: "SPEAKING  ·  rhythmic mouth and body pulse",
             Mood.HAPPY: "HAPPY  ·  bright eyes and buoyant movement",
             Mood.SAD: "EMPATHETIC  ·  softer gaze and slower movement",
-            Mood.ERROR: "ERROR  ·  alert wobble and warm warning glow",
+            Mood.ERROR: "ERROR  ·  alert wobble and glossy warning-red sheen",
         }
         self.state_label.setText(descriptions[mood])
         for button in self.buttons:
