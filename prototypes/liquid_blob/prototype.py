@@ -253,14 +253,17 @@ class LiquidBlob(QWidget):
         elif self.mood == Mood.SAD:
             cy += 3 + abs(breathe) * 3
         elif self.mood == Mood.THINKING:
-            # Move Ruby's entire body through the invisible plus-shaped boundary.
-            # Keep the full silhouette on-canvas; no path or boundary is drawn.
-            travel_x = max(0.0, min(radius * 0.62, w / 2 - radius * 1.10))
-            travel_y = max(0.0, min(radius * 0.62, h / 2 - 6 - radius * 1.10))
-            cx += self._thinking_pos.x() * travel_x
-            cy += self._thinking_pos.y() * travel_y
+            # Thinking stays anchored at the center; the whole character spins.
+            # Rotation is applied to the painter below, not to its screen position.
+            pass
         elif self.mood == Mood.ERROR:
             cx += math.sin(t * 12.0) * 2.0
+
+        if self.mood == Mood.THINKING:
+            painter.save()
+            painter.translate(cx, cy)
+            painter.rotate((t * 720.0) % 360.0)  # two full turns per second
+            painter.translate(-cx, -cy)
 
         primary, secondary = MOOD_COLORS[self.mood]
         # Error is deliberately clean and flat outside its red body: no floating halo.
@@ -355,6 +358,8 @@ class LiquidBlob(QWidget):
         self._draw_face(painter, cx, cy, face_radius, t)
 
         # No isolated specular dot: the broad animated gradient supplies the sheen.
+        if self.mood == Mood.THINKING:
+            painter.restore()
         painter.end()
 
     def _draw_face(self, painter: QPainter, cx: float, cy: float, r: float, t: float) -> None:
@@ -544,7 +549,7 @@ class MainWindow(QMainWindow):
         descriptions = {
             Mood.IDLE: "IDLE  ·  calm breathing",
             Mood.LISTENING: "LISTENING  ·  calm, attentive breathing",
-            Mood.THINKING: "THINKING  ·  whole-body liquid flow inside an invisible plus boundary",
+            Mood.THINKING: "THINKING  ·  fast continuous spin in place",
             Mood.SPEAKING: "SPEAKING  ·  rhythmic mouth and body pulse",
             Mood.HAPPY: "HAPPY  ·  bright eyes and buoyant movement",
             Mood.SAD: "EMPATHETIC  ·  softer gaze and slower movement",
