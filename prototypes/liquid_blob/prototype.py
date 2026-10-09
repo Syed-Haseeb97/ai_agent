@@ -55,14 +55,88 @@ class LiquidBlob(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setMouseTracking(True)
 
+        # Thinking uses a damped spring-mass moving through a plus-shaped set
+        # of waypoints. The position and velocity are normalized to the body.
+        self._thinking_waypoints = [
+            QPointF(-0.82, 0.0),  # left extreme
+            QPointF(-0.34, 0.0),  # left-center
+            QPointF(0.82, 0.0),   # right extreme
+            QPointF(0.0, 0.0),    # center
+            QPointF(0.0, -0.82),  # top extreme
+            QPointF(0.0, 0.82),   # bottom extreme
+            QPointF(0.0, 0.0),    # return to center
+        ]
+        self._thinking_pos = QPointF(-0.82, 0.0)
+        self._thinking_vel = QPointF(0.0, 0.0)
+        self._thinking_target = 1
+        self._thinking_history: list[QPointF] = []
+        self._last_tick = time.monotonic()
+
         self._timer = QTimer(self)
         self._timer.setTimerType(Qt.TimerType.PreciseTimer)
-        self._timer.timeout.connect(self.update)
+        self._timer.timeout.connect(self._tick)
         self._timer.start(33)  # ~30 FPS is enough for a desktop companion.
+
+    def _tick(self) -> None:
+        """Advance the Thinking fluid with a damped spring-mass simulation."""
+        now = time.monotonic()
+        dt = min(0.05, max(0.0, now - self._last_tick))
+        self._last_tick = now
+
+        if self.mood == Mood.THINKING and dt > 0.0:
+            target = self._thinking_waypoints[self._thinking_target]
+            dx = target.x() - self._thinking_pos.x()
+            dy = target.y() - self._thinking_pos.y()
+
+            # Spring force pulls the fluid toward the next waypoint. Damping
+            # dissipates energy, while a small gravity term makes vertical
+            # travel sag and overshoot naturally instead of moving like a cursor.
+            spring_k = 34.0
+            damping = 9.0
+            gravity = 0.48
+            ax = spring_k * dx - damping * self._thinking_vel.x()
+            ay = spring_k * dy - damping * self._thinking_vel.y() + gravity
+
+            self._thinking_vel.setX(self._thinking_vel.x() + ax * dt)
+            self._thinking_vel.setY(self._thinking_vel.y() + ay * dt)
+            self._thinking_pos.setX(self._thinking_pos.x() + self._thinking_vel.x() * dt)
+            self._thinking_pos.setY(self._thinking_pos.y() + self._thinking_vel.y() * dt)
+
+            # Keep the simulated mass inside the imaginary four-sided boundary.
+            limit = 0.86
+            self._thinking_pos.setX(max(-limit, min(limit, self._thinking_pos.x())))
+            self._thinking_pos.setY(max(-limit, min(limit, self._thinking_pos.y())))
+
+            distance = math.hypot(
+                target.x() - self._thinking_pos.x(),
+                target.y() - self._thinking_pos.y(),
+            )
+            speed = math.hypot(self._thinking_vel.x(), self._thinking_vel.y())
+            if distance < 0.095 and speed < 0.72:
+                self._thinking_target = (self._thinking_target + 1) % len(self._thinking_waypoints)
+
+            # Keep a short wake behind the moving mass; it becomes a soft,
+            # fading liquid tail when painted inside the body silhouette.
+            if not self._thinking_history or math.hypot(
+                self._thinking_pos.x() - self._thinking_history[-1].x(),
+                self._thinking_pos.y() - self._thinking_history[-1].y(),
+            ) > 0.025:
+                self._thinking_history.append(QPointF(
+                    self._thinking_pos.x(), self._thinking_pos.y()
+                ))
+                self._thinking_history = self._thinking_history[-12:]
+
+        self.update()
 
     def set_mood(self, mood: Mood) -> None:
         if self.mood != mood:
             self.mood = mood
+            if mood == Mood.THINKING:
+                self._thinking_pos = QPointF(-0.82, 0.0)
+                self._thinking_vel = QPointF(0.0, 0.0)
+                self._thinking_target = 1
+                self._thinking_history = []
+                self._last_tick = time.monotonic()
             self.update()
 
     def enterEvent(self, event) -> None:
@@ -201,6 +275,47 @@ class LiquidBlob(QWidget):
         painter.setPen(QPen(QColor(primary.red(), primary.green(), primary.blue(), 185), 1.4))
         painter.setBrush(QBrush(gradient))
         painter.drawPath(body)
+
+        if self.mood == Mood.THINKING:
+            # The moving mass and its wake are clipped to the liquid silhouette.
+            # No guide lines are drawn: the four-sided plus path is imaginary.
+            painter.save()
+            painter.setClipPath(body)
+            flow_x = cx + self._thinking_pos.x() * radius * 0.72
+            flow_y = cy + self._thinking_pos.y() * radius * 0.72
+
+            for i, point in enumerate(self._thinking_history[:-1]):
+                age = (i + 1) / max(1, len(self._thinking_history))
+                trail_x = cx + point.x() * radius * 0.72
+                trail_y = cy + point.y() * radius * 0.72
+                trail_r = radius * (0.035 + age * 0.055)
+                alpha = int(18 + age * 68)
+                trail = QRadialGradient(QPointF(trail_x, trail_y), trail_r * 2.4)
+                trail.setColorAt(0.0, QColor(235, 225, 255, alpha))
+                trail.setColorAt(0.48, QColor(167, 139, 250, int(alpha * 0.62)))
+                trail.setColorAt(1.0, QColor(99, 102, 241, 0))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QBrush(trail))
+                painter.drawEllipse(QRectF(
+                    trail_x - trail_r * 2.4, trail_y - trail_r * 2.4,
+                    trail_r * 4.8, trail_r * 4.8,
+                ))
+
+            mass_r = radius * 0.22
+            mass = QRadialGradient(
+                QPointF(flow_x - mass_r * 0.24, flow_y - mass_r * 0.28),
+                mass_r * 1.9,
+            )
+            mass.setColorAt(0.0, QColor(255, 248, 255, 235))
+            mass.setColorAt(0.22, QColor(220, 204, 255, 220))
+            mass.setColorAt(0.58, QColor(167, 139, 250, 185))
+            mass.setColorAt(1.0, QColor(99, 102, 241, 0))
+            painter.setBrush(QBrush(mass))
+            painter.drawEllipse(QRectF(
+                flow_x - mass_r * 1.9, flow_y - mass_r * 1.9,
+                mass_r * 3.8, mass_r * 3.8,
+            ))
+            painter.restore()
 
         # Inner edge and reflected light.
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -424,7 +539,7 @@ class MainWindow(QMainWindow):
         descriptions = {
             Mood.IDLE: "IDLE  ·  calm breathing",
             Mood.LISTENING: "LISTENING  ·  calm, attentive breathing",
-            Mood.THINKING: "THINKING  ·  shifting gaze and focused eyes",
+            Mood.THINKING: "THINKING  ·  spring-driven fluid flowing a plus path",
             Mood.SPEAKING: "SPEAKING  ·  rhythmic mouth and body pulse",
             Mood.HAPPY: "HAPPY  ·  bright eyes and buoyant movement",
             Mood.SAD: "EMPATHETIC  ·  softer gaze and slower movement",
