@@ -5,7 +5,19 @@ No API key required for basic usage.
 
 from __future__ import annotations
 
+import sys
 import threading
+
+# SpeechRecognition imports a module named "pyaudio". PyAudioWPatch is a
+# compatible Windows implementation, but its import name is "pyaudiowpatch".
+# Register it under the expected name before importing SpeechRecognition.
+if sys.platform == "win32":
+    try:
+        import pyaudiowpatch as _pyaudio
+    except ImportError:
+        pass
+    else:
+        sys.modules.setdefault("pyaudio", _pyaudio)
 
 import speech_recognition as sr
 
