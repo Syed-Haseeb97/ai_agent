@@ -84,7 +84,7 @@ class CursorCompanionTests(unittest.TestCase):
         self.assertEqual(self.orb.return_phase, "wall_recoil")
         self.assertEqual(self.orb.blob.mood, Mood.IDLE)
 
-        self.orb.move(QPoint(65, 18))
+        self.orb.move(QPoint(83, 18))
         self.orb._animate_position()
         self.assertEqual(self.orb.return_phase, "home")
         self.orb._animate_position()
