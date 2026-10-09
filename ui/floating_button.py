@@ -16,6 +16,7 @@ from voice.listener import VoiceListener
 from voice.tts import TTS
 from vision.capture import capture_primary_screen
 from ai.gemini_client import GeminiClient
+from ai.mood_sync import write_mood_state
 
 
 class State(Enum):
@@ -56,6 +57,12 @@ class FloatingButton(QWidget):
         self._response_ready: dict[int, threading.Event] = {}
         self._continuous_mode = False
         self._response_emotion = "neutral"
+        self._mood_sync_timer = QTimer(self)
+        self._mood_sync_timer.setInterval(2000)
+        self._mood_sync_timer.timeout.connect(
+            lambda: write_mood_state(self.state.name.lower(), self._response_emotion)
+        )
+        self._mood_sync_timer.start()
 
         screen = QApplication.primaryScreen().availableGeometry()
         self.move(screen.right() - 100, 34)
@@ -178,6 +185,7 @@ class FloatingButton(QWidget):
         self.blob.set_mood(mood_map[state])
         self.blob.set_speaking_active(state == State.SPEAKING)
         self.blob.set_thinking_spin_active(state == State.THINKING)
+        write_mood_state(state.name.lower(), self._response_emotion)
         self.blob.update()
 
     def _next_run(self): self._run_id += 1; return self._run_id
@@ -282,6 +290,7 @@ class FloatingButton(QWidget):
             return
         from ai.emotion import normalize_emotion
         self._response_emotion = normalize_emotion(emotion)
+        write_mood_state(self.state.name.lower(), self._response_emotion)
 
     def _on_status(self,run_id,text):
         if not self._is_current(run_id): return
