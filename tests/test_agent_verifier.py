@@ -10,6 +10,7 @@ from agent.verifier import (
     collect_os_context,
     get_active_window_title,
     verify_file_content,
+    verify_goal_app_launch,
     verify_goal_file_outputs,
     verify_process,
 )
@@ -58,6 +59,17 @@ class VerifierTests(unittest.TestCase):
         with patch("agent.verifier.os.name", "posix"):
             self.assertEqual(get_active_window_title(), "")
 
+    def test_app_launch_verification_uses_process_or_window(self):
+        with patch("agent.verifier.verify_process", return_value=False), patch(
+            "agent.verifier.get_active_window_title", return_value="Calculator"
+        ):
+            result = verify_goal_app_launch("Open Calculator")
+        self.assertIsNotNone(result)
+        self.assertTrue(result[0])
+
+    def test_unrelated_goal_is_not_app_launch_verification(self):
+        self.assertIsNone(verify_goal_app_launch("Summarize this paragraph"))
+
     def test_goal_file_output_requires_named_file(self):
         self.assertIsNone(verify_goal_file_outputs("Open Calculator"))
 
@@ -67,7 +79,10 @@ class VerifierTests(unittest.TestCase):
             path.write_text("Hello World", encoding="utf-8")
             goal = f'Type "Hello World" and save as "{path}"'
             with patch("agent.verifier._expected_file_candidates", return_value=[path]):
-                self.assertEqual(verify_goal_file_outputs(goal), (True, "Native verification passed for: ruby_test.txt"))
+                self.assertEqual(
+                    verify_goal_file_outputs(goal),
+                    (True, "Native verification passed for: ruby_test.txt"),
+                )
 
     def test_goal_file_output_fails_when_file_is_missing(self):
         with tempfile.TemporaryDirectory() as directory:
