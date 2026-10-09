@@ -81,7 +81,7 @@ class GeminiClient:
             user_text = "What is currently on my screen? Give a useful summary."
         image_part = {"mime_type": "image/jpeg", "data": jpeg_bytes}
         prompt = (
-            f"User said: {user_text.strip()}\\n\\n"
+            f"User said: {user_text.strip()}\n\n"
             "Respond to the user naturally and helpfully. Also classify the tone that Ruby "
             "should express while delivering this response. Choose exactly one emotion from "
             "this list: neutral, happy, excited, sad, empathetic, curious, surprised. "
