@@ -13,6 +13,7 @@ PyAudioWPatch>=0.2.12.7
 
 # F12 / F16 screen and mouse automation:
 pyautogui>=0.9.54
+psutil>=5.9.8
 # Optional F6 local wake-word support (Python/platform compatibility may vary):
 # openwakeword>=0.6.0
 # numpy>=1.26
