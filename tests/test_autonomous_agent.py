@@ -1,5 +1,6 @@
 import threading
 import unittest
+from unittest.mock import patch
 
 from agent.autonomous_loop import AutonomousAgent
 from agent.computer_use import ActionExecution, extract_actions
@@ -25,9 +26,11 @@ class FakeClient:
     def __init__(self):
         self.calls = 0
         self.inputs = []
+        self.os_contexts = []
 
     def start(self, goal, screenshot, policy, os_context=None):
         self.calls += 1
+        self.os_contexts.append(os_context)
         return FakeInteraction([
             FakeStep("function_call", "click", {
                 "x": 500, "y": 500, "intent": "Click routine UI control"
@@ -128,6 +131,23 @@ class AutonomousAgentTests(unittest.TestCase):
         self.assertEqual(len(executor.actions), 1)
         self.assertEqual(client.calls, 2)
         self.assertIn("Native OS context", str(client.inputs[0]))
+
+    def test_expected_output_paths_are_injected_into_initial_os_context(self):
+        client = FakeClient()
+        executor = FakeExecutor()
+        expected_path = "C:/Users/test/Documents/ruby_test.txt"
+        context = {"running_processes": [], "active_window_title": "Notepad",
+                   "filesystem_status": {expected_path: {"exists": False, "is_file": False}}}
+        with patch("agent.autonomous_loop.goal_file_paths", return_value=[expected_path]), patch(
+            "agent.autonomous_loop.collect_os_context", return_value=context
+        ):
+            agent = AutonomousAgent(
+                client=client, executor=executor,
+                capture=lambda: (b"screen", (100, 100)), max_turns=3,
+            )
+            result = agent.run("Open Notepad and save ruby_test.txt in Documents")
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(client.os_contexts[0]["filesystem_status"][expected_path]["exists"], False)
 
     def test_action_error_stops_loop(self):
         client, executor = FakeClient(), FakeExecutor({"error": "click failed"})
