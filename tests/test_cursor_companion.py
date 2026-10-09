@@ -41,6 +41,16 @@ class CursorCompanionTests(unittest.TestCase):
         self.assertFalse(self.orb.following_cursor)
         self.assertEqual(self.orb.return_phase, "wall_approach")
 
+    def test_release_timer_parks_instead_of_running_end_of_task_animation(self):
+        self.orb.follow_cursor()
+        self.orb.move(QPoint(240, 160))
+        self.orb.release_cursor()
+        self.orb._park_at_cursor()
+        self.assertFalse(self.orb.following_cursor)
+        self.assertEqual(self.orb.return_phase, "parked")
+        self.orb._animate_position()
+        self.assertEqual(self.orb.pos(), QPoint(240, 160))
+
     def test_cursor_target_is_clamped_to_available_screen(self):
         target = self.orb._target_for_cursor()
         screen = QApplication.screenAt(target) or QApplication.primaryScreen()
@@ -74,7 +84,7 @@ class CursorCompanionTests(unittest.TestCase):
         self.assertEqual(self.orb.return_phase, "wall_recoil")
         self.assertEqual(self.orb.blob.mood, Mood.IDLE)
 
-        self.orb.move(QPoint(101, 18))
+        self.orb.move(QPoint(65, 18))
         self.orb._animate_position()
         self.assertEqual(self.orb.return_phase, "home")
         self.orb._animate_position()
