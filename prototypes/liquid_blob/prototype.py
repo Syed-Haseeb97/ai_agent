@@ -58,15 +58,15 @@ class LiquidBlob(QWidget):
         # Thinking uses a damped spring-mass moving through a plus-shaped set
         # of waypoints. The position and velocity are normalized to the body.
         self._thinking_waypoints = [
-            QPointF(-0.82, 0.0),  # left extreme
-            QPointF(-0.34, 0.0),  # left-center
-            QPointF(0.82, 0.0),   # right extreme
+            QPointF(-1.0, 0.0),   # left extreme
+            QPointF(-0.36, 0.0),  # left-center
+            QPointF(1.0, 0.0),    # right extreme
             QPointF(0.0, 0.0),    # center
-            QPointF(0.0, -0.82),  # top extreme
-            QPointF(0.0, 0.82),   # bottom extreme
+            QPointF(0.0, -1.0),   # top extreme
+            QPointF(0.0, 1.0),    # bottom extreme
             QPointF(0.0, 0.0),    # return to center
         ]
-        self._thinking_pos = QPointF(-0.82, 0.0)
+        self._thinking_pos = QPointF(-1.0, 0.0)
         self._thinking_vel = QPointF(0.0, 0.0)
         self._thinking_target = 1
         self._thinking_history: list[QPointF] = []
@@ -163,7 +163,9 @@ class LiquidBlob(QWidget):
         elif mood == Mood.LISTENING:
             energy = 0.038
         elif mood == Mood.THINKING:
-            energy = 0.045
+            # The silhouette itself behaves like a fluid surface, not a solid
+            # orb containing a separate moving particle.
+            energy = 0.085
         elif mood == Mood.SAD:
             energy = 0.018
         elif mood == Mood.ERROR:
@@ -176,6 +178,17 @@ class LiquidBlob(QWidget):
             wave_b = math.sin(2 * angle - t * 0.85) * energy * 0.42
             wave_c = math.cos(5 * angle + t * 0.7) * energy * 0.22
             deform = 1.0 + wave_a + wave_b + wave_c + breathe
+            if mood == Mood.THINKING:
+                # A directional stretch follows the body's spring velocity.
+                # This makes the whole silhouette lag, pull, and settle as it moves.
+                vx = self._thinking_vel.x()
+                vy = self._thinking_vel.y()
+                speed = min(1.0, math.hypot(vx, vy) / 3.2)
+                if speed > 0.001:
+                    flow_angle = math.atan2(vy, vx)
+                    deform += 0.105 * speed * math.cos(angle - flow_angle)
+                # Traveling surface ripples make the contour feel fluid.
+                deform += math.sin(angle * 4.0 - t * 2.8) * 0.022
             if mood == Mood.SAD:
                 # A subtly heavier lower half gives the body a drooping silhouette.
                 deform += max(0.0, math.sin(angle)) * 0.035
@@ -215,7 +228,12 @@ class LiquidBlob(QWidget):
         elif self.mood == Mood.SAD:
             cy += 3 + abs(breathe) * 3
         elif self.mood == Mood.THINKING:
-            cx += math.sin(t * 1.2) * 2.8
+            # Move Ruby's entire body through the invisible plus-shaped boundary.
+            # Keep the full silhouette on-canvas; no path or boundary is drawn.
+            travel_x = max(0.0, min(radius * 0.62, w / 2 - radius * 1.10))
+            travel_y = max(0.0, min(radius * 0.62, h / 2 - 6 - radius * 1.10))
+            cx += self._thinking_pos.x() * travel_x
+            cy += self._thinking_pos.y() * travel_y
         elif self.mood == Mood.ERROR:
             cx += math.sin(t * 12.0) * 2.0
 
@@ -276,46 +294,8 @@ class LiquidBlob(QWidget):
         painter.setBrush(QBrush(gradient))
         painter.drawPath(body)
 
-        if self.mood == Mood.THINKING:
-            # The moving mass and its wake are clipped to the liquid silhouette.
-            # No guide lines are drawn: the four-sided plus path is imaginary.
-            painter.save()
-            painter.setClipPath(body)
-            flow_x = cx + self._thinking_pos.x() * radius * 0.72
-            flow_y = cy + self._thinking_pos.y() * radius * 0.72
-
-            for i, point in enumerate(self._thinking_history[:-1]):
-                age = (i + 1) / max(1, len(self._thinking_history))
-                trail_x = cx + point.x() * radius * 0.72
-                trail_y = cy + point.y() * radius * 0.72
-                trail_r = radius * (0.035 + age * 0.055)
-                alpha = int(18 + age * 68)
-                trail = QRadialGradient(QPointF(trail_x, trail_y), trail_r * 2.4)
-                trail.setColorAt(0.0, QColor(235, 225, 255, alpha))
-                trail.setColorAt(0.48, QColor(167, 139, 250, int(alpha * 0.62)))
-                trail.setColorAt(1.0, QColor(99, 102, 241, 0))
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(QBrush(trail))
-                painter.drawEllipse(QRectF(
-                    trail_x - trail_r * 2.4, trail_y - trail_r * 2.4,
-                    trail_r * 4.8, trail_r * 4.8,
-                ))
-
-            mass_r = radius * 0.22
-            mass = QRadialGradient(
-                QPointF(flow_x - mass_r * 0.24, flow_y - mass_r * 0.28),
-                mass_r * 1.9,
-            )
-            mass.setColorAt(0.0, QColor(255, 248, 255, 235))
-            mass.setColorAt(0.22, QColor(220, 204, 255, 220))
-            mass.setColorAt(0.58, QColor(167, 139, 250, 185))
-            mass.setColorAt(1.0, QColor(99, 102, 241, 0))
-            painter.setBrush(QBrush(mass))
-            painter.drawEllipse(QRectF(
-                flow_x - mass_r * 1.9, flow_y - mass_r * 1.9,
-                mass_r * 3.8, mass_r * 3.8,
-            ))
-            painter.restore()
+        # Thinking has no inner particle or internal trail: its entire body is
+        # the fluid, translating through the invisible plus-shaped boundary.
 
         # Inner edge and reflected light.
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -539,7 +519,7 @@ class MainWindow(QMainWindow):
         descriptions = {
             Mood.IDLE: "IDLE  ·  calm breathing",
             Mood.LISTENING: "LISTENING  ·  calm, attentive breathing",
-            Mood.THINKING: "THINKING  ·  spring-driven fluid flowing a plus path",
+            Mood.THINKING: "THINKING  ·  whole-body liquid flow inside an invisible plus boundary",
             Mood.SPEAKING: "SPEAKING  ·  rhythmic mouth and body pulse",
             Mood.HAPPY: "HAPPY  ·  bright eyes and buoyant movement",
             Mood.SAD: "EMPATHETIC  ·  softer gaze and slower movement",
