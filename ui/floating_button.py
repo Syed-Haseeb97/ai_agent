@@ -63,26 +63,30 @@ class FloatingButton(QWidget):
         self.response_popup = ResponsePopup()
         self.action_executor = WindowsActionExecutor()
 
-        self.stop_listening_button = QPushButton("■  Stop", self)
-        self.stop_listening_button.setFixedSize(62, 24)
-        self.stop_listening_button.move(8, 84)
+        self.stop_listening_button = QPushButton("●  Stop", self)
+        self.stop_listening_button.setFixedSize(68, 25)
+        self.stop_listening_button.move(5, 83)
+        self.stop_listening_button.setToolTip("Stop listening and return Ruby to idle")
+        self.stop_listening_button.setAccessibleName("Stop listening")
         self.stop_listening_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.stop_listening_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.stop_listening_button.setStyleSheet("""
             QPushButton {
-                background: rgba(28, 31, 43, 235);
-                color: rgba(255, 255, 255, 235);
-                border: 1px solid rgba(255, 255, 255, 70);
-                border-radius: 10px;
-                padding: 1px 7px;
+                background: rgba(17, 19, 30, 246);
+                color: #fda4af;
+                border: 1px solid rgba(167, 139, 250, 105);
+                border-radius: 12px;
+                padding: 2px 8px;
                 font: 600 9px 'Segoe UI';
             }
             QPushButton:hover {
-                background: rgba(90, 35, 45, 245);
-                border-color: rgba(255, 110, 125, 180);
+                background: rgba(91, 35, 55, 248);
+                color: #ffe4e6;
+                border-color: rgba(251, 113, 133, 210);
             }
             QPushButton:pressed {
-                background: rgba(120, 35, 48, 255);
+                background: rgba(127, 29, 50, 255);
+                border-color: rgba(251, 113, 133, 235);
             }
         """)
         self.stop_listening_button.hide()
