@@ -5,6 +5,7 @@ This module observes disk and directory usage only. It does not delete files.
 from __future__ import annotations
 
 import os
+import shutil
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -38,7 +39,7 @@ class CleanupMeasurement:
 def measure_disk(drive: str | os.PathLike[str] = "C:\\") -> DiskSnapshot:
     """Return exact byte counts reported by the operating system."""
     path = os.fspath(drive)
-    usage = __import__("shutil").disk_usage(path)
+    usage = shutil.disk_usage(path)
     return DiskSnapshot(
         drive=path,
         total_bytes=usage.total,
