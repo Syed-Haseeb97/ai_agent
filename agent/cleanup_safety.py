@@ -85,9 +85,21 @@ def classify_cleanup_target(
                 "Relative cleanup paths are blocked; use a fully resolved absolute path.",
             )
 
+        # Hard-block sensitive locations before considering any allowlist. This
+        # remains a block even if a caller accidentally configures an unsafe root.
+        lowered = str(candidate_abs).replace("/", "\\\\").casefold()
+        blocked_components = {
+            "system32", "syswow64", "program files", "program files (x86)",
+            "desktop", "documents", "pictures", "videos", "music", "downloads",
+        }
+        if any(part.casefold() in blocked_components for part in candidate_abs.parts):
+            return CleanupDecision(
+                CleanupDisposition.BLOCKED, raw, None,
+                "System or personal-data locations are prohibited from autonomous cleanup.",
+            )
+
         # Resolve for boundary comparisons but separately inspect the lexical path
         # so a symlink/junction cannot disguise an escape from an approved root.
-        candidate_abs = Path(os.path.abspath(candidate))
         roots = tuple(Path(os.path.abspath(Path(p).expanduser())) for p in (
             allowed_roots if allowed_roots is not None else default_temporary_roots()
         ))
@@ -120,19 +132,6 @@ def classify_cleanup_target(
                 CleanupDisposition.ALLOWLISTED, raw, str(candidate_resolved),
                 "Target is a non-root descendant of an approved temporary directory. "
                 "The executor must still validate each entry and honor cancellation.",
-            )
-
-        lowered = str(candidate_abs).replace("/", "\\").casefold()
-        blocked_fragments = (
-            "\\windows\\system32", "\\windows\\syswow64",
-            "\\program files", "\\program files (x86)",
-            "\\desktop", "\\documents", "\\pictures", "\\videos",
-            "\\music", "\\downloads",
-        )
-        if any(fragment in lowered for fragment in blocked_fragments):
-            return CleanupDecision(
-                CleanupDisposition.BLOCKED, raw, None,
-                "System or personal-data locations are prohibited from autonomous cleanup.",
             )
         return CleanupDecision(
             CleanupDisposition.APPROVAL_REQUIRED, raw, str(candidate_abs.resolve(strict=False)),
