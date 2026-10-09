@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import re
 
 EMOTIONS = frozenset({
     "neutral",
@@ -45,8 +44,12 @@ def parse_emotion_response(raw_text: str) -> tuple[str, str]:
 
     candidate = raw_text
     if candidate.startswith("```"):
-        candidate = re.sub(r"^\`\`\`(?:json)?\s*", "", candidate, flags=re.IGNORECASE)
-        candidate = re.sub(r"\s*\`\`\`$", "", candidate)
+        lines = candidate.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        candidate = "\n".join(lines).strip()
 
     try:
         payload = json.loads(candidate)
