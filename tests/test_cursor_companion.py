@@ -87,7 +87,12 @@ class CursorCompanionTests(unittest.TestCase):
         self.orb.move(QPoint(83, 18))
         self.orb._animate_position()
         self.assertEqual(self.orb.return_phase, "home")
-        self.orb._animate_position()
+        # The home leg is deliberately interpolated, not teleported. Advance
+        # the animation deterministically until it settles, with a safety cap.
+        for _ in range(100):
+            if self.orb.return_phase == "idle":
+                break
+            self.orb._animate_position()
         self.assertEqual(self.orb.return_phase, "idle")
         self.assertEqual(self.orb.pos(), self.orb._home)
 
