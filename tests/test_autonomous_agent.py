@@ -179,6 +179,31 @@ class AutonomousAgentTests(unittest.TestCase):
         self.assertEqual(result.result.get("error"), "Stopped by user")
         self.assertIn("ctrl", gui.released_keys)
 
+
+    def test_long_press_duration_is_capped(self):
+        class FakePyAutoGUI:
+            FAILSAFE = False
+
+            def size(self):
+                return (1000, 1000)
+
+            def moveTo(self, x, y):
+                pass
+
+            def mouseDown(self):
+                pass
+
+            def mouseUp(self):
+                pass
+
+        executor = WindowsComputerExecutor(pyautogui_module=FakePyAutoGUI())
+        with patch.object(executor, "_interruptible_sleep", return_value=True) as sleep_mock:
+            result = executor.execute(AgentAction(
+                "long_press", {"x": 500, "y": 500, "seconds": 999999}, "long"
+            ))
+        self.assertEqual(result.result, {"ok": True})
+        sleep_mock.assert_called_once_with(10.0)
+
     def test_action_error_stops_loop(self):
         client, executor = FakeClient(), FakeExecutor({"error": "click failed"})
         agent = AutonomousAgent(
