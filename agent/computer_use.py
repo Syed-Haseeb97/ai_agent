@@ -229,7 +229,9 @@ class WindowsComputerExecutor:
                 self.pyautogui.moveTo(*self._xy(args))
                 self.pyautogui.mouseDown()
                 try:
-                    if not self._interruptible_sleep(float(args.get("seconds", 2))):
+                    # Keep a single press bounded even if the model supplies an extreme duration.
+                    hold_seconds = max(0.0, min(10.0, float(args.get("seconds", 2))))
+                    if not self._interruptible_sleep(hold_seconds):
                         return ActionExecution(name, action.call_id, {"error": "Stopped by user"})
                 finally:
                     self.pyautogui.mouseUp()
