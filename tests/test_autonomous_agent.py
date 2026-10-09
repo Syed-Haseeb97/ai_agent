@@ -143,5 +143,31 @@ class AutonomousAgentTests(unittest.TestCase):
         self.assertEqual(client.calls, 1)
 
 
+    def test_action_lifecycle_hooks_wrap_the_executor(self):
+        events = []
+        client, executor = FakeClient(), FakeExecutor()
+        agent = AutonomousAgent(
+            client=client,
+            executor=executor,
+            capture=lambda: (b"screen", (100, 100)),
+            on_action_start=lambda action: events.append(("start", action.name)),
+            on_action_end=lambda action: events.append(("end", action.name)),
+        )
+        result = agent.run("Finish the routine desktop task")
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(events, [("start", "click"), ("end", "click")])
+
+    def test_action_hook_failure_does_not_break_desktop_action(self):
+        client, executor = FakeClient(), FakeExecutor()
+        agent = AutonomousAgent(
+            client=client,
+            executor=executor,
+            capture=lambda: (b"screen", (100, 100)),
+            on_action_start=lambda action: (_ for _ in ()).throw(RuntimeError("visual only")),
+        )
+        result = agent.run("Finish the routine desktop task")
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(len(executor.actions), 1)
+
 if __name__ == "__main__":
     unittest.main()
