@@ -321,8 +321,8 @@ class LiquidBlob(QWidget):
             painter.setBrush(QColor(20, 18, 55, 210))
             painter.drawEllipse(QRectF(cx - mouth_w / 2, cy + r * 0.18, mouth_w, mouth_h))
         elif mood == Mood.LISTENING:
-            # Keep the face relaxed while the orbiting droplets around the shell
-            # provide the listening motion cue.
+            # Keep the face relaxed while orbiting droplets cue active listening.
+            pass
         elif mood == Mood.SAD:
             painter.setPen(QPen(QColor(235, 240, 255, 190), 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             painter.drawArc(QRectF(cx - r * 0.13, cy + r * 0.19, r * 0.26, r * 0.12), 25 * 16, 130 * 16)
