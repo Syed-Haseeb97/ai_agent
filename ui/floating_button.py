@@ -292,14 +292,20 @@ class FloatingButton(QWidget):
             if ready is not None: ready.set()
     def _on_error(self,run_id,text):
         if not self._is_current(run_id): return
-        self.status_popup.show_message(f"⚠️ {text}",self.pos(),duration_ms=3500); self._set_state(State.ERROR)
-        QTimer.singleShot(2500,lambda rid=run_id:self._return_idle(rid))
+        # An error must stop continuous listening; otherwise an empty/failed
+        # listen immediately starts another run and oscillates ERROR/LISTENING.
+        self._set_continuous_ui(False)
+        self.status_popup.show_message(f"⚠️ {text}",self.pos(),duration_ms=3500)
+        self._set_state(State.ERROR)
+        QTimer.singleShot(2500, lambda rid=run_id: self._return_idle(rid))
     def _return_idle(self,run_id):
         if self._is_current(run_id): self._set_state(State.IDLE)
     def _on_finished(self,run_id):
         if not self._is_current(run_id): return
-        self.status_popup.hide_popup()
-        if self.state!=State.ERROR: self._set_state(State.IDLE)
+        # Keep the error message visible for its configured duration.
+        if self.state != State.ERROR:
+            self.status_popup.hide_popup()
+            self._set_state(State.IDLE)
         self._busy=False
         if self._continuous_mode:
             QTimer.singleShot(250, self._continue_listening)
