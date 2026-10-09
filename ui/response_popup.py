@@ -267,7 +267,7 @@ class ResponsePopup(QWidget):
             label, accent, tint = "READY", "#a5f3d0", "rgba(52, 211, 153, 18)"
         self.status_badge.setText(f"●  {label}")
         self.status_badge.setStyleSheet(
-            f"color: {accent}; background: {tint}; border: 1px solid {accent}55; "
+            f"color: {accent}; background: {tint}; border: 1px solid rgba(167, 139, 250, 85); "
             "border-radius: 9px; padding: 5px 8px; font-size: 9px; font-weight: 600;"
         )
 
