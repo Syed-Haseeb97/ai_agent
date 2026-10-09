@@ -166,6 +166,24 @@ class LiquidBlob(QWidget):
         painter.setBrush(QBrush(shadow))
         painter.drawEllipse(QRectF(cx - radius, cy - radius * 0.4, radius * 2, radius * 1.6))
 
+        # A stable circular face core is used only for the everyday interaction states.
+        # The living liquid body grows beyond this boundary; emotional/error states
+        # intentionally have no rigid ring.
+        has_rigid_core = self.mood in (Mood.IDLE, Mood.LISTENING, Mood.SPEAKING)
+        core_radius = radius * 0.79
+        if has_rigid_core:
+            core_gradient = QRadialGradient(
+                QPointF(cx - core_radius * 0.28, cy - core_radius * 0.38),
+                core_radius * 1.55,
+            )
+            core_gradient.setColorAt(0.0, QColor(255, 255, 255, 28))
+            core_gradient.setColorAt(0.55, QColor(primary.red(), primary.green(), primary.blue(), 24))
+            core_gradient.setColorAt(1.0, QColor(8, 12, 35, 45))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(core_gradient))
+            painter.drawEllipse(QRectF(cx - core_radius, cy - core_radius,
+                                       core_radius * 2, core_radius * 2))
+
         body = self._body_path(cx, cy, radius, t)
         # Rich cool gradient gives the flat shape a glossy, rounded 3D feel.
         gradient = QRadialGradient(QPointF(cx - radius * 0.32, cy - radius * 0.42), radius * 1.75)
@@ -190,6 +208,17 @@ class LiquidBlob(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(shine))
         painter.drawEllipse(QRectF(cx - radius * 0.92, cy - radius * 0.98, radius * 1.2, radius * 0.92))
+
+        if has_rigid_core:
+            # Thin, stable face boundary; liquid motion remains visible outside it.
+            ring = QRadialGradient(QPointF(cx, cy), core_radius)
+            ring.setColorAt(0.90, QColor(255, 255, 255, 0))
+            ring.setColorAt(0.965, QColor(230, 242, 255, 82))
+            ring.setColorAt(1.0, QColor(primary.red(), primary.green(), primary.blue(), 20))
+            painter.setBrush(QBrush(ring))
+            painter.setPen(QPen(QColor(235, 245, 255, 65), 1.0))
+            painter.drawEllipse(QRectF(cx - core_radius, cy - core_radius,
+                                       core_radius * 2, core_radius * 2))
 
         self._draw_face(painter, cx, cy, radius, t)
 
@@ -218,6 +247,16 @@ class LiquidBlob(QWidget):
         eye_dx = r * 0.29
         eye_w = r * 0.105
         eye_h = r * 0.245
+
+        # Gentle periodic blink, shared by the white eyes in every non-smile state.
+        # A short smooth close/open cycle roughly every 3.5–5 seconds.
+        blink_cycle = (t + 0.37) % 4.15
+        blink = 1.0
+        if blink_cycle < 0.16:
+            blink = max(0.06, abs(blink_cycle - 0.08) / 0.08)
+        elif 0.16 <= blink_cycle < 0.24:
+            blink = max(0.06, (blink_cycle - 0.16) / 0.08)
+        eye_h *= blink
 
         # Thinking eyes briefly narrow and glance up/sideways like a thinking emoji.
         if mood == Mood.THINKING:
@@ -258,11 +297,21 @@ class LiquidBlob(QWidget):
             painter.setBrush(QColor(20, 18, 55, 210))
             painter.drawEllipse(QRectF(cx - mouth_w / 2, cy + r * 0.18, mouth_w, mouth_h))
         elif mood == Mood.LISTENING:
-            # Small pulse marks imply that Ruby is receiving audio.
-            pulse = (math.sin(t * 5.5) + 1.0) / 2.0
-            painter.setPen(QPen(QColor(210, 250, 255, int(100 + pulse * 100)), 2.0))
-            painter.drawLine(QPointF(cx - r * 0.12, cy + r * 0.28), QPointF(cx - r * 0.12, cy + r * (0.32 + pulse * 0.08)))
-            painter.drawLine(QPointF(cx + r * 0.12, cy + r * 0.28), QPointF(cx + r * 0.12, cy + r * (0.32 + pulse * 0.08)))
+            # Calm listening cue: a small, soft waveform that rises and falls
+            # smoothly under the eyes, instead of the old awkward dangling bars.
+            pulse = (math.sin(t * 3.4) + 1.0) / 2.0
+            wave_pen = QPen(QColor(220, 250, 255, int(105 + pulse * 105)),
+                            max(1.8, r * 0.014), Qt.PenStyle.SolidLine,
+                            Qt.PenCapStyle.RoundCap)
+            painter.setPen(wave_pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            wave = QPainterPath()
+            wave.moveTo(cx - r * 0.18, cy + r * 0.285)
+            wave.quadTo(cx - r * 0.09, cy + r * (0.245 - pulse * 0.045),
+                        cx, cy + r * 0.285)
+            wave.quadTo(cx + r * 0.09, cy + r * (0.325 + pulse * 0.025),
+                        cx + r * 0.18, cy + r * 0.285)
+            painter.drawPath(wave)
         elif mood == Mood.SAD:
             painter.setPen(QPen(QColor(235, 240, 255, 190), 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             painter.drawArc(QRectF(cx - r * 0.13, cy + r * 0.19, r * 0.26, r * 0.12), 25 * 16, 130 * 16)
