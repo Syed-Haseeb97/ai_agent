@@ -5,6 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtTest import QTest
 
 from ui.cursor_companion import CursorCompanion
 from ui.liquid_blob import Mood
@@ -44,8 +45,9 @@ class CursorCompanionTests(unittest.TestCase):
     def test_release_timer_parks_instead_of_running_end_of_task_animation(self):
         self.orb.follow_cursor()
         self.orb.move(QPoint(240, 160))
+        self.orb._release_timer.setInterval(1)
         self.orb.release_cursor()
-        self.orb._park_at_cursor()
+        QTest.qWait(10)
         self.assertFalse(self.orb.following_cursor)
         self.assertEqual(self.orb.return_phase, "parked")
         self.orb._animate_position()
