@@ -146,25 +146,26 @@ class LiquidBlob(QWidget):
             cx += math.sin(t * 12.0) * 2.0
 
         primary, secondary = MOOD_COLORS[self.mood]
-        halo_alpha = 55 if self.mood != Mood.SAD else 28
-        if self.mood == Mood.ERROR:
-            halo_alpha = 45
+        # Error is deliberately clean and flat outside its red body: no floating halo.
+        if self.mood != Mood.ERROR:
+            halo_alpha = 55 if self.mood != Mood.SAD else 28
 
-        # Ambient halo.
-        halo = QRadialGradient(QPointF(cx, cy), radius * 1.55)
-        halo.setColorAt(0.0, QColor(primary.red(), primary.green(), primary.blue(), halo_alpha))
-        halo.setColorAt(0.52, QColor(secondary.red(), secondary.green(), secondary.blue(), 25))
-        halo.setColorAt(1.0, QColor(secondary.red(), secondary.green(), secondary.blue(), 0))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(halo))
-        painter.drawEllipse(QRectF(cx - radius * 1.55, cy - radius * 1.55, radius * 3.1, radius * 3.1))
+            # Ambient halo.
+            halo = QRadialGradient(QPointF(cx, cy), radius * 1.55)
+            halo.setColorAt(0.0, QColor(primary.red(), primary.green(), primary.blue(), halo_alpha))
+            halo.setColorAt(0.52, QColor(secondary.red(), secondary.green(), secondary.blue(), 25))
+            halo.setColorAt(1.0, QColor(secondary.red(), secondary.green(), secondary.blue(), 0))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(halo))
+            painter.drawEllipse(QRectF(cx - radius * 1.55, cy - radius * 1.55, radius * 3.1, radius * 3.1))
 
-        # Soft cast shadow under the body.
-        shadow = QRadialGradient(QPointF(cx, cy + radius * 0.48), radius * 0.95)
-        shadow.setColorAt(0.0, QColor(0, 0, 0, 100))
-        shadow.setColorAt(1.0, QColor(0, 0, 0, 0))
-        painter.setBrush(QBrush(shadow))
-        painter.drawEllipse(QRectF(cx - radius, cy - radius * 0.4, radius * 2, radius * 1.6))
+        # Preserve the soft grounding shadow for normal moods, but keep Error shade-free.
+        if self.mood != Mood.ERROR:
+            shadow = QRadialGradient(QPointF(cx, cy + radius * 0.48), radius * 0.95)
+            shadow.setColorAt(0.0, QColor(0, 0, 0, 100))
+            shadow.setColorAt(1.0, QColor(0, 0, 0, 0))
+            painter.setBrush(QBrush(shadow))
+            painter.drawEllipse(QRectF(cx - radius, cy - radius * 0.4, radius * 2, radius * 1.6))
 
         # Everyday states have two distinct layers: a solid, glass-like face orb,
         # surrounded by the continuously deforming liquid body.
@@ -173,10 +174,13 @@ class LiquidBlob(QWidget):
 
         body = self._body_path(cx, cy, radius, t)
         # A broad, moving highlight gives the body a living, liquid sheen.
-        # Its centre travels around the body rather than leaving a fixed top-left spot.
+        # Error intentionally skips the highlight and stays uniformly warning-red.
         highlight_x = cx + math.cos(t * 0.72) * radius * 0.24
         highlight_y = cy + math.sin(t * 0.58) * radius * 0.22
-        gradient = QRadialGradient(QPointF(highlight_x, highlight_y), radius * 1.38)
+        gradient = QRadialGradient(
+            QPointF(cx, cy) if self.mood == Mood.ERROR else QPointF(highlight_x, highlight_y),
+            radius * 1.38,
+        )
         if self.mood == Mood.SAD:
             # Keep the sad fluid clean blue; no charcoal/navy shading in its body.
             gradient.setColorAt(0.0, QColor("#b9ddff"))
@@ -184,11 +188,10 @@ class LiquidBlob(QWidget):
             gradient.setColorAt(0.58, QColor("#60a5fa"))
             gradient.setColorAt(1.0, QColor("#60a5fa"))
         elif self.mood == Mood.ERROR:
-            # Error stays entirely in a warm red/pink palette, never blue.
-            gradient.setColorAt(0.0, QColor("#fecdd3"))
-            gradient.setColorAt(0.22, QColor("#fb7185"))
-            gradient.setColorAt(0.58, QColor("#f43f5e"))
-            gradient.setColorAt(1.0, QColor("#e11d48"))
+            # Solid vivid warning red: no moving highlight or gradient shade.
+            error_red = QColor("#f00024")
+            gradient.setColorAt(0.0, error_red)
+            gradient.setColorAt(1.0, error_red)
         else:
             gradient.setColorAt(0.0, primary.lighter(175))
             gradient.setColorAt(0.22, primary.lighter(135))
@@ -284,20 +287,24 @@ class LiquidBlob(QWidget):
             painter.save()
             painter.translate(ex, ey)
             if mood == Mood.HAPPY:
-                # Closed smiling eyes as soft upward arcs.
-                painter.setPen(QPen(QColor("#f7fbff"), max(3.0, r * 0.045), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-                painter.setBrush(Qt.BrushStyle.NoBrush)
+                # Closed smiling eyes with a fine dark outline for definition.
                 arc = QPainterPath()
                 arc.moveTo(-eye_w * 0.9, this_eye_h * 0.15)
                 arc.quadTo(0, -this_eye_h * 0.72, eye_w * 0.9, this_eye_h * 0.15)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.setPen(QPen(QColor("#111018"), max(4.8, r * 0.065), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+                painter.drawPath(arc)
+                painter.setPen(QPen(QColor("#f7fbff"), max(2.6, r * 0.035), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
                 painter.drawPath(arc)
             else:
-                painter.setPen(Qt.PenStyle.NoPen)
+                eye_rect = QRectF(-eye_w / 2, -this_eye_h / 2, eye_w, this_eye_h)
                 eye_gradient = QLinearGradient(-eye_w, -this_eye_h, eye_w, this_eye_h)
                 eye_gradient.setColorAt(0.0, QColor("#ffffff"))
                 eye_gradient.setColorAt(1.0, QColor("#cfe5ff"))
+                # Thin dark outline keeps white eyes visible against bright highlights.
+                painter.setPen(QPen(QColor("#111018"), max(1.0, r * 0.018)))
                 painter.setBrush(QBrush(eye_gradient))
-                painter.drawEllipse(QRectF(-eye_w / 2, -this_eye_h / 2, eye_w, this_eye_h))
+                painter.drawEllipse(eye_rect)
             painter.restore()
 
         if mood == Mood.SPEAKING:
