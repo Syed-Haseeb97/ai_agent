@@ -1,7 +1,7 @@
 name: Autonomous Agent Tests
 on:
   push:
-    branches: [main, feature/autonomous-agent-mode]
+    branches: [main, feature/autonomous-agent-mode, feature/f16-reliability-baseline]
   pull_request:
     branches: [main]
 jobs:
@@ -13,5 +13,6 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --upgrade pip
-      - run: python -m pip install mss Pillow python-dotenv
+      - run: python -m pip install mss Pillow python-dotenv psutil
       - run: python -m unittest discover -s tests -p 'test_autonomous_agent.py' -v
+      - run: python -m unittest discover -s tests -p 'test_agent_verifier.py' -v
