@@ -77,8 +77,10 @@ class AutonomousAgentTests(unittest.TestCase):
         self.assertFalse(decision.allowed)
 
     def test_policy_fails_closed_on_malformed_safety_decision(self):
-        decision = AutonomousPolicy().check_action("click", {"safety_decision": "allow"})
-        self.assertFalse(decision.allowed)
+        for value in ("allow", None, {}, {"decision": "future_unknown_value"}):
+            with self.subTest(value=value):
+                decision = AutonomousPolicy().check_action("click", {"safety_decision": value})
+                self.assertFalse(decision.allowed)
 
     def test_policy_blocks_unknown_action_before_executor(self):
         decision = AutonomousPolicy().check_action("launch_shell", {"intent": "routine"})
