@@ -342,6 +342,24 @@ class LiquidBlob(QWidget):
                     painter.drawEllipse(QRectF(px - pupil_r * 0.3, py - pupil_r * 0.42, spec, spec))
             painter.restore()
 
+        if mood == Mood.THINKING:
+            # Soft lavender particles give a quiet processing cue above the head.
+            painter.setPen(Qt.PenStyle.NoPen)
+            for i in range(3):
+                a = t * 0.72 + i * (math.tau / 3)
+                ox = cx + math.cos(a) * r * 0.40
+                oy = cy - r * 0.78 + math.sin(a) * r * 0.10
+                pulse = 0.65 + 0.35 * ((math.sin(t * 1.8 + i * 1.4) + 1.0) * 0.5)
+                size = r * (0.028 + 0.012 * pulse) * (1.0 - i * 0.10)
+                glow = QRadialGradient(QPointF(ox, oy), size * 2.0)
+                glow.setColorAt(0.0, QColor(199, 180, 255, 105))
+                glow.setColorAt(0.55, QColor(167, 139, 250, 55))
+                glow.setColorAt(1.0, QColor(167, 139, 250, 0))
+                painter.setBrush(QBrush(glow))
+                painter.drawEllipse(QRectF(ox - size * 2, oy - size * 2, size * 4, size * 4))
+                painter.setBrush(QBrush(QColor(225, 216, 255, int(150 * pulse))))
+                painter.drawEllipse(QRectF(ox - size, oy - size, size * 2, size * 2))
+
         if mood == Mood.SPEAKING:
             # A readable, softly animated rose-lilac mouth: larger than a dot,
             # but still restrained, with a dark plum edge against the black core.
