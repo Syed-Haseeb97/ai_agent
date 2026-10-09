@@ -98,6 +98,28 @@ def collect_os_context(filesystem_paths: list[str | Path] | None = None) -> dict
     }
 
 
+def verify_goal_app_launch(goal: str) -> tuple[bool, str] | None:
+    """Verify common, explicitly requested app launches; return None for other goals."""
+    if not re.search(r"\b(open|launch|start|show|bring up)\b", goal, re.I):
+        return None
+    lowered = goal.casefold()
+    apps = {
+        "calculator": (("calculatorapp.exe", "calculator.exe", "calc.exe"), "calculator"),
+        "notepad": (("notepad.exe",), "notepad"),
+        "chrome": (("chrome.exe",), "chrome"),
+        "file explorer": (("explorer.exe",), "file explorer"),
+        "task manager": (("taskmgr.exe",), "task manager"),
+        "command prompt": (("cmd.exe",), "command prompt"),
+    }
+    for label, (processes, title_hint) in apps.items():
+        if re.search(rf"\b{re.escape(label)}\b", lowered):
+            title = get_active_window_title()
+            if any(verify_process(name) for name in processes) or title_hint in title.casefold():
+                return True, f"Native verification passed: {label.title()} is running or its window is active."
+            return False, f"Native verification failed: could not confirm {label.title()} is running or visible."
+    return None
+
+
 def _expected_file_candidates(goal: str, filename: str) -> list[Path]:
     raw = Path(filename)
     if raw.is_absolute() or "/" in filename or "\\" in filename:
@@ -130,12 +152,7 @@ def _expected_file_candidates(goal: str, filename: str) -> list[Path]:
 
 
 def verify_goal_file_outputs(goal: str) -> tuple[bool, str] | None:
-    """Verify explicitly named output files in a goal; return None for non-file goals.
-
-    This intentionally verifies only clearly named files, not vague claims that notes
-    or a document were created. Exact text is checked when a short quoted payload is
-    explicitly paired with a typing/writing instruction.
-    """
+    """Verify explicitly named output files; return None for non-file goals."""
     if not re.search(r"\b(save|write|create|export|store|file|document)\b", goal, re.I):
         return None
     filenames = list(dict.fromkeys(re.findall(
