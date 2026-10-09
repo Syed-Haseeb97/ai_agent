@@ -178,17 +178,25 @@ class LiquidBlob(QWidget):
             wave_b = math.sin(2 * angle - t * 0.85) * energy * 0.42
             wave_c = math.cos(5 * angle + t * 0.7) * energy * 0.22
             deform = 1.0 + wave_a + wave_b + wave_c + breathe
+            flow_x = flow_y = 0.0
             if mood == Mood.THINKING:
-                # A directional stretch follows the body's spring velocity.
-                # This makes the whole silhouette lag, pull, and settle as it moves.
+                # Ruby is a deformable fluid silhouette, not a circle being translated.
+                # Stretch along the dominant travel axis and softly compress the
+                # perpendicular axis, roughly preserving volume.
                 vx = self._thinking_vel.x()
                 vy = self._thinking_vel.y()
-                speed = min(1.0, math.hypot(vx, vy) / 3.2)
+                speed = min(1.0, math.hypot(vx, vy) / 2.7)
                 if speed > 0.001:
                     flow_angle = math.atan2(vy, vx)
-                    deform += 0.105 * speed * math.cos(angle - flow_angle)
-                # Traveling surface ripples make the contour feel fluid.
-                deform += math.sin(angle * 4.0 - t * 2.8) * 0.022
+                    alignment = math.cos(angle - flow_angle)
+                    # Pull the leading surface forward; the back edge lags behind.
+                    deform += 0.19 * speed * alignment
+                    # Uneven waves travel across the surface instead of a uniform squash.
+                    deform += math.sin(angle * 3.0 - t * 3.4 + flow_angle) * 0.045 * speed
+                    deform += math.sin(angle * 6.0 + t * 2.2 - flow_angle) * 0.022 * speed
+                    # Make the shape distinctly longer horizontally or vertically.
+                    flow_x = abs(vx) / max(abs(vx) + abs(vy), 1e-6)
+                    flow_y = abs(vy) / max(abs(vx) + abs(vy), 1e-6)
             if mood == Mood.SAD:
                 # A subtly heavier lower half gives the body a drooping silhouette.
                 deform += max(0.0, math.sin(angle)) * 0.035
@@ -197,8 +205,25 @@ class LiquidBlob(QWidget):
             elif mood == Mood.ERROR:
                 deform += math.sin(angle * 7 + t * 9.0) * 0.018
             r = radius * deform
-            x = cx + math.cos(angle) * r
-            y = cy + math.sin(angle) * r * (1.0 + (0.045 if mood == Mood.SAD else 0.0))
+            x_scale = 1.0
+            y_scale = 1.0
+            if mood == Mood.THINKING:
+                # Axis-specific stretch is strongest while moving, then relaxes
+                # gradually as momentum fades; the counter-squash keeps Ruby blobby.
+                x_scale += 0.38 * flow_x * min(1.0, math.hypot(
+                    self._thinking_vel.x(), self._thinking_vel.y()
+                ) / 2.7)
+                y_scale += 0.38 * flow_y * min(1.0, math.hypot(
+                    self._thinking_vel.x(), self._thinking_vel.y()
+                ) / 2.7)
+                x_scale -= 0.12 * flow_y * min(1.0, math.hypot(
+                    self._thinking_vel.x(), self._thinking_vel.y()
+                ) / 2.7)
+                y_scale -= 0.12 * flow_x * min(1.0, math.hypot(
+                    self._thinking_vel.x(), self._thinking_vel.y()
+                ) / 2.7)
+            x = cx + math.cos(angle) * r * x_scale
+            y = cy + math.sin(angle) * r * y_scale * (1.0 + (0.045 if mood == Mood.SAD else 0.0))
             points.append(QPointF(x, y))
 
         path.moveTo(points[0])
