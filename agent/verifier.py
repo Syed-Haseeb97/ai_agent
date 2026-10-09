@@ -151,6 +151,16 @@ def _expected_file_candidates(goal: str, filename: str) -> list[Path]:
     return unique
 
 
+def goal_file_paths(goal: str) -> list[Path]:
+    """Resolve candidate locations for explicitly named files in a save/write goal."""
+    if not re.search(r"\b(save|write|create|export|store|file|document)\b", goal, re.I):
+        return []
+    filenames = re.findall(r"(?<![\w])([\w.-]+\.(?:txt|md|csv|json|log|ya?ml))\b", goal, re.I)
+    return list(dict.fromkeys(
+        path for filename in filenames for path in _expected_file_candidates(goal, filename)
+    ))
+
+
 def verify_goal_file_outputs(goal: str) -> tuple[bool, str] | None:
     """Verify explicitly named output files; return None for non-file goals."""
     if not re.search(r"\b(save|write|create|export|store|file|document)\b", goal, re.I):
