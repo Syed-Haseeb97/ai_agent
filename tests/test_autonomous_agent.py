@@ -1,8 +1,9 @@
 import threading
 import unittest
+from unittest.mock import patch
 
 from agent.autonomous_loop import AutonomousAgent
-from agent.computer_use import ActionExecution, extract_actions
+from agent.computer_use import ActionExecution, AgentAction, WindowsComputerExecutor, extract_actions
 from agent.policy import AutonomousPolicy
 
 
@@ -24,9 +25,12 @@ class FakeInteraction:
 class FakeClient:
     def __init__(self):
         self.calls = 0
+        self.inputs = []
+        self.os_contexts = []
 
-    def start(self, goal, screenshot, policy):
+    def start(self, goal, screenshot, policy, os_context=None):
         self.calls += 1
+        self.os_contexts.append(os_context)
         return FakeInteraction([
             FakeStep("function_call", "click", {
                 "x": 500, "y": 500, "intent": "Click routine UI control"
@@ -35,6 +39,7 @@ class FakeClient:
 
     def continue_interaction(self, interaction_id, function_results):
         self.calls += 1
+        self.inputs.append(function_results)
         return FakeInteraction([
             FakeStep("model_output", content=[{"type": "text", "text": "done"}])
         ], "i2")
@@ -45,6 +50,10 @@ class FakeExecutor:
         self.actions = []
         self.result = result if result is not None else {"ok": True}
         self.on_execute = on_execute
+        self.cleanup_calls = 0
+
+    def release_held_inputs(self):
+        self.cleanup_calls += 1
 
     def execute(self, action):
         self.actions.append(action)
@@ -62,18 +71,14 @@ class AutonomousAgentTests(unittest.TestCase):
         self.assertEqual(action.arguments["x"], 1)
 
     def test_policy_allows_routine_action(self):
-        self.assertTrue(AutonomousPolicy().check_action(
-            "click", {"intent": "Click routine UI control"}
-        ).allowed)
+        self.assertTrue(AutonomousPolicy().check_action("click", {"intent": "Click routine UI control"}).allowed)
 
     def test_policy_blocks_consequential_intent(self):
         decision = AutonomousPolicy().check_action("click", {"intent": "Click Purchase"})
         self.assertFalse(decision.allowed)
 
     def test_policy_blocks_confirmation_decision(self):
-        decision = AutonomousPolicy().check_action(
-            "click", {"safety_decision": {"decision": "require_confirmation"}}
-        )
+        decision = AutonomousPolicy().check_action("click", {"safety_decision": {"decision": "require_confirmation"}})
         self.assertFalse(decision.allowed)
 
     def test_policy_fails_closed_on_malformed_safety_decision(self):
@@ -91,16 +96,16 @@ class AutonomousAgentTests(unittest.TestCase):
             AutonomousAgent(client=FakeClient(), executor=FakeExecutor(), max_turns=0)
         with self.assertRaises(ValueError):
             AutonomousAgent(client=FakeClient(), executor=FakeExecutor(), max_runtime_seconds=0)
+        with self.assertRaises(ValueError):
+            AutonomousAgent(client=FakeClient(), executor=FakeExecutor(), max_file_verification_retries=-1)
 
     def test_stop_event_halts_before_capture_or_api(self):
         stop = threading.Event()
         stop.set()
         client, executor = FakeClient(), FakeExecutor()
         agent = AutonomousAgent(
-            client=client,
-            executor=executor,
-            capture=lambda: self.fail("capture should not run"),
-            stop_event=stop,
+            client=client, executor=executor,
+            capture=lambda: self.fail("capture should not run"), stop_event=stop,
         )
         result = agent.run("anything")
         self.assertEqual(result.status, "stopped")
@@ -112,14 +117,13 @@ class AutonomousAgentTests(unittest.TestCase):
         client = FakeClient()
         executor = FakeExecutor(on_execute=stop.set)
         agent = AutonomousAgent(
-            client=client,
-            executor=executor,
-            capture=lambda: (b"screen", (100, 100)),
-            stop_event=stop,
+            client=client, executor=executor,
+            capture=lambda: (b"screen", (100, 100)), stop_event=stop,
         )
         result = agent.run("Finish the routine desktop task")
         self.assertEqual(result.status, "stopped")
         self.assertEqual(client.calls, 1)
+        self.assertEqual(executor.cleanup_calls, 1)
 
     def test_loop_executes_then_finishes(self):
         client, executor = FakeClient(), FakeExecutor()
@@ -131,6 +135,79 @@ class AutonomousAgentTests(unittest.TestCase):
         self.assertEqual(result.status, "completed")
         self.assertEqual(len(executor.actions), 1)
         self.assertEqual(client.calls, 2)
+        self.assertIn("Native OS context", str(client.inputs[0]))
+
+    def test_expected_output_paths_are_injected_into_initial_os_context(self):
+        client = FakeClient()
+        executor = FakeExecutor()
+        expected_path = "C:/Users/test/Documents/ruby_test.txt"
+        context = {"running_processes": [], "active_window_title": "Notepad",
+                   "filesystem_status": {expected_path: {"exists": False, "is_file": False}}}
+        with patch("agent.autonomous_loop.goal_file_paths", return_value=[expected_path]), patch(
+            "agent.autonomous_loop.collect_os_context", return_value=context
+        ) as collect_context_mock:
+            agent = AutonomousAgent(
+                client=client, executor=executor,
+                capture=lambda: (b"screen", (100, 100)), max_turns=3,
+            )
+            result = agent.run("Complete the routine desktop task")
+        self.assertEqual(result.status, "completed")
+        collect_context_mock.assert_called_with([expected_path])
+        self.assertEqual(client.os_contexts[0]["filesystem_status"][expected_path]["exists"], False)
+
+
+    def test_executor_releases_held_key_when_stop_arrives_during_typing(self):
+        stop = threading.Event()
+
+        class FakePyAutoGUI:
+            FAILSAFE = False
+
+            def __init__(self):
+                self.released_keys = []
+
+            def size(self):
+                return (1000, 1000)
+
+            def keyDown(self, key):
+                pass
+
+            def keyUp(self, key):
+                self.released_keys.append(key)
+
+            def write(self, text, interval=0):
+                stop.set()
+
+        gui = FakePyAutoGUI()
+        executor = WindowsComputerExecutor(pyautogui_module=gui, stop_event=stop)
+        executor.execute(AgentAction("key_down", {"key": "ctrl"}, "down"))
+        result = executor.execute(AgentAction("type", {"text": "long text"}, "type"))
+        self.assertEqual(result.result.get("error"), "Stopped by user")
+        self.assertIn("ctrl", gui.released_keys)
+
+
+    def test_long_press_duration_is_capped(self):
+        class FakePyAutoGUI:
+            FAILSAFE = False
+
+            def size(self):
+                return (1000, 1000)
+
+            def moveTo(self, x, y):
+                pass
+
+            def mouseDown(self):
+                pass
+
+            def mouseUp(self):
+                pass
+
+        executor = WindowsComputerExecutor(pyautogui_module=FakePyAutoGUI())
+        with patch.object(executor, "_interruptible_sleep", return_value=True) as sleep_mock:
+            result = executor.execute(AgentAction(
+                "long_press", {"x": 500, "y": 500, "seconds": 999999}, "long"
+            ))
+        self.assertEqual(result.result, {"ok": True})
+        sleep_mock.assert_called_once_with(10.0)
 
     def test_action_error_stops_loop(self):
         client, executor = FakeClient(), FakeExecutor({"error": "click failed"})
@@ -141,6 +218,7 @@ class AutonomousAgentTests(unittest.TestCase):
         result = agent.run("Finish the routine desktop task")
         self.assertEqual(result.status, "action_error")
         self.assertEqual(client.calls, 1)
+
 
 
     def test_action_lifecycle_hooks_wrap_the_executor(self):
