@@ -57,6 +57,14 @@ class FloatingButton(QWidget):
         self._response_ready: dict[int, threading.Event] = {}
         self._continuous_mode = False
         self._response_emotion = "neutral"
+        # Keep the tiny local state snapshot fresh while Ruby is speaking so
+        # the separate cursor overlay can mirror the same expression.
+        self._mood_sync_timer = QTimer(self)
+        self._mood_sync_timer.setInterval(2000)
+        self._mood_sync_timer.timeout.connect(
+            lambda: write_mood_state(self.state.name.lower(), self._response_emotion)
+        )
+        self._mood_sync_timer.start()
 
         screen = QApplication.primaryScreen().availableGeometry()
         self.move(screen.right() - 100, 34)
