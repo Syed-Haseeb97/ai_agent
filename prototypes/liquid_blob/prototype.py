@@ -169,7 +169,7 @@ class LiquidBlob(QWidget):
 
         # Everyday states have two distinct layers: a solid, glass-like face orb,
         # surrounded by the continuously deforming liquid body.
-        has_black_core = self.mood in (Mood.IDLE, Mood.LISTENING, Mood.SPEAKING, Mood.SAD)
+        has_black_core = self.mood in (Mood.IDLE, Mood.LISTENING, Mood.SPEAKING, Mood.SAD, Mood.THINKING)
         core_radius = radius * 0.63
 
         body = self._body_path(cx, cy, radius, t)
@@ -218,11 +218,18 @@ class LiquidBlob(QWidget):
                 QPointF(cx - core_radius * 0.32, cy - core_radius * 0.42),
                 core_radius * 1.55,
             )
-            orb.setColorAt(0.0, QColor("#30313a"))
-            orb.setColorAt(0.22, QColor("#17181e"))
-            orb.setColorAt(0.68, QColor("#08090d"))
-            orb.setColorAt(0.94, QColor("#020305"))
-            orb.setColorAt(1.0, QColor("#000000"))
+            if self.mood == Mood.THINKING:
+                orb.setColorAt(0.0, QColor("#292644"))
+                orb.setColorAt(0.22, QColor("#171526"))
+                orb.setColorAt(0.68, QColor("#0b0a14"))
+                orb.setColorAt(0.94, QColor("#05040b"))
+                orb.setColorAt(1.0, QColor("#020106"))
+            else:
+                orb.setColorAt(0.0, QColor("#30313a"))
+                orb.setColorAt(0.22, QColor("#17181e"))
+                orb.setColorAt(0.68, QColor("#08090d"))
+                orb.setColorAt(0.94, QColor("#020305"))
+                orb.setColorAt(1.0, QColor("#000000"))
             painter.setPen(QPen(QColor("#555965"), 1.5))
             painter.setBrush(QBrush(orb))
             painter.drawEllipse(QRectF(cx - core_radius, cy - core_radius,
@@ -322,6 +329,17 @@ class LiquidBlob(QWidget):
                 painter.setPen(QPen(QColor("#111018"), max(1.0, r * 0.018)))
                 painter.setBrush(QBrush(eye_gradient))
                 painter.drawEllipse(eye_rect)
+                if mood == Mood.THINKING and this_eye_h > eye_w * 0.55:
+                    # Small indigo pupils make the upward glance readable.
+                    pupil_r = min(eye_w, this_eye_h) * 0.27
+                    px = max(-eye_w * 0.18, min(eye_w * 0.18, gaze_x * 0.12))
+                    py = max(-this_eye_h * 0.12, min(this_eye_h * 0.12, gaze_y * 0.08))
+                    painter.setPen(Qt.PenStyle.NoPen)
+                    painter.setBrush(QBrush(QColor("#24203d")))
+                    painter.drawEllipse(QRectF(px - pupil_r, py - pupil_r, pupil_r * 2, pupil_r * 2))
+                    spec = pupil_r * 0.34
+                    painter.setBrush(QBrush(QColor(255, 255, 255, 185)))
+                    painter.drawEllipse(QRectF(px - pupil_r * 0.3, py - pupil_r * 0.42, spec, spec))
             painter.restore()
 
         if mood == Mood.SPEAKING:
@@ -441,7 +459,7 @@ class MainWindow(QMainWindow):
         descriptions = {
             Mood.IDLE: "IDLE  ·  calm breathing",
             Mood.LISTENING: "LISTENING  ·  calm, attentive breathing",
-            Mood.THINKING: "THINKING  ·  stepped gaze and focused eyes",
+            Mood.THINKING: "THINKING  ·  stepped gaze, pupils and thought orbit",
             Mood.SPEAKING: "SPEAKING  ·  rhythmic mouth and body pulse",
             Mood.HAPPY: "HAPPY  ·  bright eyes and buoyant movement",
             Mood.SAD: "EMPATHETIC  ·  softer gaze and slower movement",
