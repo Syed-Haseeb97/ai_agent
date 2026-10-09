@@ -243,8 +243,24 @@ class LiquidBlob(QWidget):
         gaze_x = 0.0
         gaze_y = 0.0
         if mood == Mood.THINKING:
-            gaze_x = math.sin(t * 0.75) * 7.0 + 5.0
-            gaze_y = -5.0 + math.sin(t * 1.5) * 2.0
+            # Hold each thoughtful look, then ease to the next direction.
+            segment = 1.6
+            ease = 0.35
+            phase = t % (segment * 3)
+            targets = ((6.5, -5.5), (-3.0, -4.0), (4.0, -6.5))
+            idx = int(phase // segment) % 3
+            nxt = (idx + 1) % 3
+            local = phase % segment
+            gaze_x, gaze_y = targets[idx]
+            if local >= segment - ease:
+                u = (local - (segment - ease)) / ease
+                u = u * u * (3.0 - 2.0 * u)
+                ax, ay = targets[idx]
+                bx, by = targets[nxt]
+                gaze_x = ax + (bx - ax) * u
+                gaze_y = ay + (by - ay) * u
+            gaze_x += math.sin(t * 0.9) * 0.45
+            gaze_y += math.cos(t * 1.1) * 0.3
         elif mood == Mood.LISTENING:
             gaze_x = math.sin(t * 2.2) * 2.5
         elif mood == Mood.HAPPY:
@@ -259,14 +275,15 @@ class LiquidBlob(QWidget):
         eye_w = r * 0.105
         eye_h = r * 0.245
 
-        # Gentle periodic blink, shared by the white eyes in every non-smile state.
-        # A short smooth close/open cycle roughly every 3.5–5 seconds.
-        blink_cycle = (t + 0.37) % 4.15
+        # Thinking blinks less often and closes its eyes a touch longer.
+        blink_period = 6.2 if mood == Mood.THINKING else 4.15
+        blink_close = 0.20 if mood == Mood.THINKING else 0.16
+        blink_cycle = (t + 0.37) % blink_period
         blink = 1.0
-        if blink_cycle < 0.16:
-            blink = max(0.06, abs(blink_cycle - 0.08) / 0.08)
-        elif 0.16 <= blink_cycle < 0.24:
-            blink = max(0.06, (blink_cycle - 0.16) / 0.08)
+        if blink_cycle < blink_close:
+            blink = max(0.06, abs(blink_cycle - blink_close * 0.5) / (blink_close * 0.5))
+        elif blink_close <= blink_cycle < blink_close * 1.5:
+            blink = max(0.06, (blink_cycle - blink_close) / (blink_close * 0.5))
         if mood != Mood.HAPPY:
             eye_h *= blink
 
@@ -424,7 +441,7 @@ class MainWindow(QMainWindow):
         descriptions = {
             Mood.IDLE: "IDLE  ·  calm breathing",
             Mood.LISTENING: "LISTENING  ·  calm, attentive breathing",
-            Mood.THINKING: "THINKING  ·  shifting gaze and focused eyes",
+            Mood.THINKING: "THINKING  ·  stepped gaze and focused eyes",
             Mood.SPEAKING: "SPEAKING  ·  rhythmic mouth and body pulse",
             Mood.HAPPY: "HAPPY  ·  bright eyes and buoyant movement",
             Mood.SAD: "EMPATHETIC  ·  softer gaze and slower movement",
