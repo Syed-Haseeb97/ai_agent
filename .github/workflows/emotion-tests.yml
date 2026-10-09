@@ -21,7 +21,7 @@ on:
       - "tests/test_tts_generation.py"
       - ".github/workflows/emotion-tests.yml"
   push:
-    branches: [feature/ruby-emotional-expressions, feature/ruby-companion-ui-polish]
+    branches: [feature/ruby-emotional-expressions, feature/ruby-companion-ui-polish, feature/ruby-companion-ui-polish-ready]
     paths:
       - "ai/emotion.py"
       - "ai/gemini_client.py"
