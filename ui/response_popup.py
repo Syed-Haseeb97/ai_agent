@@ -161,9 +161,9 @@ class ResponsePopup(QWidget):
         brand_row.addWidget(self.orb, 0, Qt.AlignmentFlag.AlignVCenter)
         brand_row.addLayout(brand_text, 1)
 
-        online = QLabel("●  READY")
-        online.setObjectName("online")
-        brand_row.addWidget(online, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.status_badge = QLabel("●  READY")
+        self.status_badge.setObjectName("online")
+        brand_row.addWidget(self.status_badge, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self.clear_button = QPushButton("⌫")
         self.clear_button.setObjectName("iconButton")
@@ -251,6 +251,25 @@ class ResponsePopup(QWidget):
         app = QApplication.instance()
         if app is not None:
             app.installEventFilter(self)
+
+    def set_status(self, text: str = "") -> None:
+        """Keep the chat header synchronized with Ruby's live interaction state."""
+        lowered = (text or "").casefold()
+        if "listen" in lowered:
+            label, accent, tint = "LISTENING", "#67e8f9", "rgba(34, 211, 238, 18)"
+        elif "think" in lowered or "process" in lowered:
+            label, accent, tint = "THINKING", "#c4b5fd", "rgba(167, 139, 250, 18)"
+        elif "speak" in lowered:
+            label, accent, tint = "SPEAKING", "#93c5fd", "rgba(96, 165, 250, 18)"
+        elif "error" in lowered or "⚠" in lowered:
+            label, accent, tint = "ATTENTION", "#fda4af", "rgba(251, 113, 133, 18)"
+        else:
+            label, accent, tint = "READY", "#a5f3d0", "rgba(52, 211, 153, 18)"
+        self.status_badge.setText(f"●  {label}")
+        self.status_badge.setStyleSheet(
+            f"color: {accent}; background: {tint}; border: 1px solid {accent}55; "
+            "border-radius: 9px; padding: 5px 8px; font-size: 9px; font-weight: 600;"
+        )
 
     def _append(self, speaker: str, text: str) -> None:
         text = text.strip()
