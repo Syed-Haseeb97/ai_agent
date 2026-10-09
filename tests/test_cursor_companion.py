@@ -7,6 +7,7 @@ from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import QApplication
 
 from ui.cursor_companion import CursorCompanion
+from ui.liquid_blob import Mood
 
 
 class CursorCompanionTests(unittest.TestCase):
@@ -30,6 +31,7 @@ class CursorCompanionTests(unittest.TestCase):
     def test_follow_and_release_are_stateful_and_graceful(self):
         self.orb.follow_cursor()
         self.assertTrue(self.orb.following_cursor)
+        self.assertEqual(self.orb.return_phase, "following")
         self.orb.release_cursor()
         self.assertTrue(self.orb._release_timer.isActive())
         self.orb.follow_cursor()
@@ -37,6 +39,7 @@ class CursorCompanionTests(unittest.TestCase):
         self.assertTrue(self.orb.following_cursor)
         self.orb.return_home()
         self.assertFalse(self.orb.following_cursor)
+        self.assertEqual(self.orb.return_phase, "wall_approach")
 
     def test_cursor_target_is_clamped_to_available_screen(self):
         target = self.orb._target_for_cursor()
@@ -50,11 +53,33 @@ class CursorCompanionTests(unittest.TestCase):
     def test_motion_interpolates_instead_of_teleporting(self):
         self.orb.move(QPoint(0, 0))
         self.orb._home = QPoint(100, 100)
-        self.orb.return_home()
+        self.orb._return_phase = "home"
         self.orb._animate_position()
         self.assertNotEqual(self.orb.pos(), QPoint(100, 100))
         self.assertLess(self.orb.x(), 100)
         self.assertLess(self.orb.y(), 100)
+
+    def test_wall_contact_triggers_surprised_face_then_recoil_and_home(self):
+        self.orb._home = QPoint(100, 18)
+        self.orb._wall_x = 119
+        self.orb.move(QPoint(119, 18))
+        self.orb._return_phase = "wall_approach"
+        self.orb._animate_position()
+        self.assertEqual(self.orb.return_phase, "dizzy")
+        self.assertEqual(self.orb.blob.mood, Mood.SURPRISED)
+        self.assertTrue(self.orb._wall_hit_timer.isActive())
+
+        self.orb._wall_hit_timer.stop()
+        self.orb._start_wall_recoil()
+        self.assertEqual(self.orb.return_phase, "wall_recoil")
+        self.assertEqual(self.orb.blob.mood, Mood.IDLE)
+
+        self.orb.move(QPoint(101, 18))
+        self.orb._animate_position()
+        self.assertEqual(self.orb.return_phase, "home")
+        self.orb._animate_position()
+        self.assertEqual(self.orb.return_phase, "idle")
+        self.assertEqual(self.orb.pos(), self.orb._home)
 
 
 if __name__ == "__main__":
