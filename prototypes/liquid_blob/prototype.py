@@ -241,6 +241,7 @@ class LiquidBlob(QWidget):
 
     def _draw_face(self, painter: QPainter, cx: float, cy: float, r: float, t: float) -> None:
         mood = self.mood
+        has_glass_core = mood in (Mood.IDLE, Mood.LISTENING, Mood.SPEAKING, Mood.SAD)
         gaze_x = 0.0
         gaze_y = 0.0
         if mood == Mood.THINKING:
@@ -423,7 +424,7 @@ class MainWindow(QMainWindow):
         self.blob.set_mood(mood)
         descriptions = {
             Mood.IDLE: "IDLE  ·  calm breathing",
-            Mood.LISTENING: "LISTENING  ·  attentive gaze and audio pulse",
+            Mood.LISTENING: "LISTENING  ·  curious raised brow and lean-in",
             Mood.THINKING: "THINKING  ·  shifting gaze and focused eyes",
             Mood.SPEAKING: "SPEAKING  ·  rhythmic mouth and body pulse",
             Mood.HAPPY: "HAPPY  ·  bright eyes and buoyant movement",
