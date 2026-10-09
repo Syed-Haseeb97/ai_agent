@@ -619,6 +619,9 @@ class MainWindow(QMainWindow):
             timer.deleteLater()
         self._prompt_timers.clear()
         self.blob.set_mood(mood)
+        # State buttons are only visual previews; only Enter's prompt lifecycle
+        # is allowed to activate the spin.
+        self.blob.set_thinking_spin_active(False)
         descriptions = {
             Mood.IDLE: "IDLE  ·  calm breathing",
             Mood.LISTENING: "LISTENING  ·  calm, attentive breathing",
