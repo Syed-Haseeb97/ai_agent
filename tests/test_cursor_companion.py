@@ -1,5 +1,6 @@
 import os
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -52,6 +53,34 @@ class CursorCompanionTests(unittest.TestCase):
         self.assertEqual(self.orb.return_phase, "parked")
         self.orb._animate_position()
         self.assertEqual(self.orb.pos(), QPoint(240, 160))
+
+    def test_shared_ruby_emotion_is_mirrored_when_parked(self):
+        self.orb._return_phase = "parked"
+        with patch(
+            "ui.cursor_companion.read_mood_state",
+            return_value={"state": "speaking", "emotion": "happy", "timestamp": 1.0},
+        ):
+            self.orb._sync_shared_mood()
+        self.assertEqual(self.orb.blob.mood, Mood.HAPPY)
+
+    def test_shared_mood_cannot_interrupt_cursor_action_or_wall_animation(self):
+        self.orb.follow_cursor()
+        with patch(
+            "ui.cursor_companion.read_mood_state",
+            return_value={"state": "speaking", "emotion": "sad", "timestamp": 1.0},
+        ):
+            self.orb._sync_shared_mood()
+        self.assertEqual(self.orb.blob.mood, Mood.IDLE)
+
+        self.orb._following = False
+        self.orb._return_phase = "dizzy"
+        self.orb.blob.set_mood(Mood.SURPRISED)
+        with patch(
+            "ui.cursor_companion.read_mood_state",
+            return_value={"state": "speaking", "emotion": "sad", "timestamp": 1.0},
+        ):
+            self.orb._sync_shared_mood()
+        self.assertEqual(self.orb.blob.mood, Mood.SURPRISED)
 
     def test_cursor_target_is_clamped_to_available_screen(self):
         target = self.orb._target_for_cursor()
