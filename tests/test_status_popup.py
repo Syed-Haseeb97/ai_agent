@@ -3,7 +3,7 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import QPoint
+from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import QApplication
 
 from ui.status_popup import StatusPopup
@@ -56,7 +56,7 @@ class StatusPopupTests(unittest.TestCase):
 
     def test_capsule_has_compact_fixed_size_and_never_activates(self):
         self.assertEqual((self.popup.width(), self.popup.height()), (258, 66))
-        self.assertTrue(self.popup.testAttribute(self.popup.WidgetAttribute.WA_ShowWithoutActivating))
+        self.assertTrue(self.popup.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating))
 
 
 if __name__ == "__main__":
