@@ -3,7 +3,7 @@ on:
   push:
     branches: [main, feature/autonomous-agent-mode, feature/f16-reliability-baseline, feature/f16-cleanup-safety-foundation]
   pull_request:
-    branches: [main]
+    branches: [main, feature/f16-reliability-baseline]
 jobs:
   unit:
     runs-on: ubuntu-latest
