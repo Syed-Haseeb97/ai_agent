@@ -144,7 +144,9 @@ class LiquidBlob(QWidget):
     def set_mood(self, mood: Mood) -> None:
         if self.mood != mood:
             self.mood = mood
-            self._spin_active = mood == Mood.THINKING
+            # A mood selection alone must not leave Ruby spinning forever.
+            # Prompt lifecycle events explicitly enable/disable the spin.
+            self._spin_active = False
             if mood == Mood.THINKING:
                 self._thinking_pos = QPointF(-0.82, 0.0)
                 self._thinking_vel = QPointF(0.0, 0.0)
@@ -274,9 +276,13 @@ class LiquidBlob(QWidget):
             cx += math.sin(t * 12.0) * 2.0
 
         if self.mood == Mood.THINKING:
+            # Fake a 3D turn around the vertical axis: the character narrows
+            # horizontally as it turns edge-on, rather than rotating like a wheel.
             painter.save()
             painter.translate(cx, cy)
-            painter.rotate(self._spin_angle)  # 720°/s while prompt work is active
+            yaw = math.radians(self._spin_angle)
+            horizontal_scale = max(0.035, abs(math.cos(yaw)))
+            painter.scale(horizontal_scale, 1.0)
             painter.translate(-cx, -cy)
 
         primary, secondary = MOOD_COLORS[self.mood]
@@ -587,9 +593,11 @@ class MainWindow(QMainWindow):
             timer.start(delay_ms)
             self._prompt_timers.append(timer)
 
-        schedule(650, lambda: self._set_prompt_stage(stage, False, "DELIVERED  ·  spin pauses"))
-        schedule(1050, lambda: self._set_prompt_stage(stage, True, "THINKING  ·  Ruby received the prompt"))
-        schedule(2850, lambda: self._finish_prompt_stage(stage))
+        # Give each transition a visible pause: send/spin, delivered/stop,
+        # processing/spin, then response-ready/stop.
+        schedule(900, lambda: self._set_prompt_stage(stage, False, "DELIVERED  ·  spin paused"))
+        schedule(1750, lambda: self._set_prompt_stage(stage, True, "THINKING  ·  Ruby received the prompt"))
+        schedule(4300, lambda: self._finish_prompt_stage(stage))
 
     def _set_prompt_stage(self, stage: int, spinning: bool, label: str) -> None:
         if stage != self._prompt_stage:
