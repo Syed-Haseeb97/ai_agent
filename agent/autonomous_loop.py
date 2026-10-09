@@ -10,7 +10,7 @@ from typing import Any, Callable
 
 from agent.computer_use import ComputerUseClient, WindowsComputerExecutor, extract_actions, extract_text, function_results
 from agent.policy import AutonomousPolicy
-from agent.verifier import collect_os_context, goal_file_paths, verify_goal_app_launch, verify_goal_file_outputs
+from agent.verifier import collect_os_context, collect_process_identities, goal_file_paths, verify_goal_app_launch, verify_goal_file_outputs
 from vision.capture import capture_primary_screen
 
 
@@ -63,6 +63,7 @@ class AutonomousAgent:
             return AgentRunResult("stopped", 0, "Stopped by the user.")
 
         started = time.monotonic()
+        processes_before = collect_process_identities()
         verification_failures = 0
         previous_turn_signatures: set[str] = set()
         previous_turn_screen_hash = ""
@@ -83,7 +84,7 @@ class AutonomousAgent:
                 if not actions:
                     verification = verify_goal_file_outputs(goal)
                     if verification is None:
-                        verification = verify_goal_app_launch(goal)
+                        verification = verify_goal_app_launch(goal, processes_before)
                     if verification is None or verification[0]:
                         message = extract_text(interaction) or "The agent finished without further UI actions."
                         if verification is not None:
