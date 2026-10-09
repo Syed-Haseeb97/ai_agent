@@ -204,20 +204,12 @@ class LiquidBlob(QWidget):
 
         thinking_front_facing = True
         if self.mood == Mood.THINKING:
-            # Yaw around the vertical axis: the orb narrows edge-on, then its
-            # back faces us for half a turn. Keep its center fixed.
+            # Fake a rotating *sphere*, not a flat coin: retain a round silhouette
+            # and move a curved, shaded meridian across its surface. A sphere
+            # remains circular while its surface markings and lighting rotate.
             painter.save()
-            painter.translate(cx, cy)
             yaw = math.radians(self._spin_angle)
-            facing = math.cos(yaw)
-            # Perspective squash is the main visual cue for a vertical-axis turn.
-            # Add a slight side-surface shift so the body reads as a rotating orb,
-            # not as eyes sliding over a stationary circle.
-            horizontal_scale = max(0.025, abs(facing) ** 1.55)
-            painter.translate(math.sin(yaw) * radius * 0.045, 0)
-            thinking_front_facing = facing > 0.08
-            painter.scale(horizontal_scale, 1.0)
-            painter.translate(-cx, -cy)
+            thinking_front_facing = True
 
         primary, secondary = MOOD_COLORS[self.mood]
         # Error is deliberately clean and flat outside its red body: no floating halo.
@@ -250,11 +242,10 @@ class LiquidBlob(QWidget):
         # A broad, moving highlight gives every mood a living, liquid sheen.
         # Error keeps the same glossy motion, recolored into its warning-red theme.
         if self.mood == Mood.THINKING:
-            # Let the glossy reflection travel with the yaw, giving the orb a
-            # clear rotating-sphere cue instead of unrelated liquid wobble.
+            # A smaller traveling specular reflection keeps the silhouette round.
             yaw_for_shine = math.radians(self._spin_angle)
-            highlight_x = cx + math.sin(yaw_for_shine) * radius * 0.36
-            highlight_y = cy - radius * 0.22 + abs(math.cos(yaw_for_shine)) * radius * 0.10
+            highlight_x = cx + math.sin(yaw_for_shine) * radius * 0.24
+            highlight_y = cy - radius * 0.28
         else:
             highlight_x = cx + math.cos(t * 0.72) * radius * 0.24
             highlight_y = cy + math.sin(t * 0.58) * radius * 0.22
@@ -282,6 +273,32 @@ class LiquidBlob(QWidget):
         painter.setPen(QPen(QColor(primary.red(), primary.green(), primary.blue(), 185), 1.4))
         painter.setBrush(QBrush(gradient))
         painter.drawPath(body)
+
+        if self.mood == Mood.THINKING:
+            # Rotating meridian / limb shading sells spherical volume without
+            # crushing the silhouette into a coin. The dark crescent shifts as
+            # the sphere turns; a soft bright band travels opposite it.
+            yaw = math.radians(self._spin_angle)
+            facing = math.cos(yaw)
+            side = math.sin(yaw)
+            band_x = cx + side * radius * 0.50
+            band = QRadialGradient(QPointF(band_x, cy - radius * 0.05), radius * 0.95)
+            band.setColorAt(0.0, QColor(255, 255, 255, 62))
+            band.setColorAt(0.42, QColor(210, 205, 255, 24))
+            band.setColorAt(1.0, QColor(10, 8, 35, 0))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(band))
+            painter.drawEllipse(QRectF(cx - radius, cy - radius, radius * 2, radius * 2))
+
+            # A curved terminator creates the sense of a sphere turning in depth.
+            shade_x = cx - side * radius * 0.42
+            shade = QRadialGradient(QPointF(shade_x, cy), radius * 1.05)
+            shade.setColorAt(0.0, QColor(18, 12, 55, 0))
+            shade.setColorAt(0.58, QColor(18, 12, 55, 10))
+            shade.setColorAt(0.84, QColor(8, 6, 30, int(80 + 65 * abs(side))))
+            shade.setColorAt(1.0, QColor(5, 4, 20, int(115 + 70 * abs(side))))
+            painter.setBrush(QBrush(shade))
+            painter.drawEllipse(QRectF(cx - radius, cy - radius, radius * 2, radius * 2))
 
         # Thinking has no inner particle or internal trail: its entire body is
         # the fluid, translating through the invisible plus-shaped boundary.
