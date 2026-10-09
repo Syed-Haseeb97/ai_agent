@@ -86,7 +86,8 @@ class LiquidBlob(QWidget):
         self._last_tick = now
 
         if self.mood == Mood.THINKING and self._spin_active and dt > 0.0:
-            self._spin_angle = (self._spin_angle + 720.0 * dt) % 360.0
+            # Faster yaw makes the body rotation clearly visible at ~30 FPS.
+            self._spin_angle = (self._spin_angle + 1080.0 * dt) % 360.0
 
 
         self.update()
@@ -208,8 +209,11 @@ class LiquidBlob(QWidget):
             painter.translate(cx, cy)
             yaw = math.radians(self._spin_angle)
             facing = math.cos(yaw)
-            horizontal_scale = max(0.045, abs(facing))
-            thinking_front_facing = facing > 0.0
+            # Strong perspective squash at the side-on angle, then widen again.
+            # This is intentionally exaggerated so the *body* visibly rotates,
+            # rather than the motion reading as only the eyes drifting.
+            horizontal_scale = max(0.035, abs(facing) ** 1.35)
+            thinking_front_facing = facing > 0.12
             painter.scale(horizontal_scale, 1.0)
             painter.translate(-cx, -cy)
 
@@ -243,8 +247,15 @@ class LiquidBlob(QWidget):
         body = self._body_path(cx, cy, radius, t)
         # A broad, moving highlight gives every mood a living, liquid sheen.
         # Error keeps the same glossy motion, recolored into its warning-red theme.
-        highlight_x = cx + math.cos(t * 0.72) * radius * 0.24
-        highlight_y = cy + math.sin(t * 0.58) * radius * 0.22
+        if self.mood == Mood.THINKING:
+            # Let the glossy reflection travel with the yaw, giving the orb a
+            # clear rotating-sphere cue instead of unrelated liquid wobble.
+            yaw_for_shine = math.radians(self._spin_angle)
+            highlight_x = cx + math.sin(yaw_for_shine) * radius * 0.36
+            highlight_y = cy - radius * 0.22 + abs(math.cos(yaw_for_shine)) * radius * 0.10
+        else:
+            highlight_x = cx + math.cos(t * 0.72) * radius * 0.24
+            highlight_y = cy + math.sin(t * 0.58) * radius * 0.22
         gradient = QRadialGradient(QPointF(highlight_x, highlight_y), radius * 1.38)
         if self.mood == Mood.SAD:
             # Keep the sad fluid clean blue; no charcoal/navy shading in its body.
@@ -317,8 +328,10 @@ class LiquidBlob(QWidget):
         gaze_x = 0.0
         gaze_y = 0.0
         if mood == Mood.THINKING:
-            gaze_x = math.sin(t * 0.75) * 7.0 + 5.0
-            gaze_y = -5.0 + math.sin(t * 1.5) * 2.0
+            # Keep the face fixed relative to the front surface; yaw itself
+            # carries it out of view and back, so the eyes do not wander.
+            gaze_x = 0.0
+            gaze_y = -2.0
         elif mood == Mood.LISTENING:
             gaze_x = math.sin(t * 2.2) * 2.5
         elif mood == Mood.HAPPY:
