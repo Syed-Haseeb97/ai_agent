@@ -17,7 +17,7 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton,
-    QSizePolicy, QVBoxLayout, QWidget,
+    QSizePolicy, QVBoxLayout, QWidget, QLineEdit,
 )
 
 
@@ -50,6 +50,8 @@ class LiquidBlob(QWidget):
         self.mood = Mood.IDLE
         self.started_at = time.monotonic()
         self.hovered = False
+        self._spin_active = False
+        self._spin_angle = 0.0
         self.setMinimumSize(300, 280)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -82,6 +84,9 @@ class LiquidBlob(QWidget):
         now = time.monotonic()
         dt = min(0.05, max(0.0, now - self._last_tick))
         self._last_tick = now
+
+        if self.mood == Mood.THINKING and self._spin_active and dt > 0.0:
+            self._spin_angle = (self._spin_angle + 720.0 * dt) % 360.0
 
         if self.mood == Mood.THINKING and dt > 0.0:
             target = self._thinking_waypoints[self._thinking_target]
@@ -128,9 +133,18 @@ class LiquidBlob(QWidget):
 
         self.update()
 
+    def set_thinking_spin_active(self, active: bool) -> None:
+        """Start/stop Thinking rotation from prompt-lifecycle events."""
+        active = bool(active)
+        if self._spin_active != active:
+            self._spin_active = active
+            self._last_tick = time.monotonic()
+            self.update()
+
     def set_mood(self, mood: Mood) -> None:
         if self.mood != mood:
             self.mood = mood
+            self._spin_active = mood == Mood.THINKING
             if mood == Mood.THINKING:
                 self._thinking_pos = QPointF(-0.82, 0.0)
                 self._thinking_vel = QPointF(0.0, 0.0)
@@ -262,7 +276,7 @@ class LiquidBlob(QWidget):
         if self.mood == Mood.THINKING:
             painter.save()
             painter.translate(cx, cy)
-            painter.rotate((t * 720.0) % 360.0)  # two full turns per second
+            painter.rotate(self._spin_angle)  # 720°/s while prompt work is active
             painter.translate(-cx, -cy)
 
         primary, secondary = MOOD_COLORS[self.mood]
@@ -502,6 +516,12 @@ class MainWindow(QMainWindow):
         self.state_label = QLabel("IDLE  ·  calm breathing")
         self.state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.state_label.setStyleSheet("color: #a5b4fc; font: 600 10pt 'Segoe UI';")
+        self._prompt_stage = 0
+        self._prompt_timers: list[QTimer] = []
+        self.prompt_input = QLineEdit()
+        self.prompt_input.setPlaceholderText("Type a test prompt and press Enter…")
+        self.prompt_input.setStyleSheet("QLineEdit { color: #f1f5f9; background: #111827; border: 1px solid #34415c; border-radius: 10px; padding: 10px 12px; font: 10pt 'Segoe UI'; } QLineEdit:focus { border-color: #9b87f5; }")
+        self.prompt_input.returnPressed.connect(self.run_prompt_lifecycle_demo)
 
         card = QFrame()
         card.setStyleSheet("QFrame { background: #0c1120; border: 1px solid #202942; border-radius: 24px; }")
@@ -537,6 +557,7 @@ class MainWindow(QMainWindow):
         layout.addSpacing(2)
         layout.addWidget(card, 1)
         layout.addWidget(self.state_label)
+        layout.addWidget(self.prompt_input)
         layout.addLayout(state_grid)
         layout.addLayout(emotion_grid)
         layout.addWidget(footer)
@@ -544,7 +565,51 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
         self.choose_mood(Mood.IDLE)
 
+    def run_prompt_lifecycle_demo(self) -> None:
+        \"\"\"Preview prompt-event spin transitions without calling an AI backend.\"\"\"
+        prompt = self.prompt_input.text().strip()
+        if not prompt:
+            return
+        for timer in self._prompt_timers:
+            timer.stop()
+            timer.deleteLater()
+        self._prompt_timers.clear()
+        self._prompt_stage += 1
+        stage = self._prompt_stage
+        self.blob.set_mood(Mood.THINKING)
+        self.blob.set_thinking_spin_active(True)
+        self.state_label.setText(\"SENDING  ·  spinning while prompt is sent\")
+
+        def schedule(delay_ms: int, callback) -> None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(callback)
+            timer.start(delay_ms)
+            self._prompt_timers.append(timer)
+
+        schedule(650, lambda: self._set_prompt_stage(stage, False, \"DELIVERED  ·  spin pauses\"))
+        schedule(1050, lambda: self._set_prompt_stage(stage, True, \"THINKING  ·  Ruby received the prompt\"))
+        schedule(2850, lambda: self._finish_prompt_stage(stage))
+
+    def _set_prompt_stage(self, stage: int, spinning: bool, label: str) -> None:
+        if stage != self._prompt_stage:
+            return
+        self.blob.set_thinking_spin_active(spinning)
+        self.state_label.setText(label)
+
+    def _finish_prompt_stage(self, stage: int) -> None:
+        if stage != self._prompt_stage:
+            return
+        self.blob.set_thinking_spin_active(False)
+        self.blob.set_mood(Mood.IDLE)
+        self.state_label.setText(\"RESPONSE READY  ·  spin stopped\")
+
     def choose_mood(self, mood: Mood) -> None:
+        self._prompt_stage += 1
+        for timer in self._prompt_timers:
+            timer.stop()
+            timer.deleteLater()
+        self._prompt_timers.clear()
         self.blob.set_mood(mood)
         descriptions = {
             Mood.IDLE: "IDLE  ·  calm breathing",
