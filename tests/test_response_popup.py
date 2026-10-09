@@ -68,8 +68,11 @@ class ResponsePopupInteractionTests(unittest.TestCase):
 
     def test_user_content_is_escaped_as_plain_text(self):
         self.popup._append("user", "<script>alert('x')</script> & hello")
+        html = self.popup.history.document().toHtml()
         self.assertIn("<script>alert('x')</script> & hello", self.popup.history.toPlainText())
-        self.assertNotIn("alert('x')", self.popup.history.document().toHtml().replace("&lt;", ""))
+        self.assertNotIn("<script>", html)
+        self.assertIn("&lt;script&gt;", html)
+        self.assertIn("&amp; hello", html)
 
     def test_input_and_panel_have_polished_fixed_geometry(self):
         self.assertEqual(self.popup.size().width(), 456)
