@@ -140,13 +140,14 @@ class AutonomousAgentTests(unittest.TestCase):
                    "filesystem_status": {expected_path: {"exists": False, "is_file": False}}}
         with patch("agent.autonomous_loop.goal_file_paths", return_value=[expected_path]), patch(
             "agent.autonomous_loop.collect_os_context", return_value=context
-        ):
+        ) as collect_context_mock:
             agent = AutonomousAgent(
                 client=client, executor=executor,
                 capture=lambda: (b"screen", (100, 100)), max_turns=3,
             )
             result = agent.run("Complete the routine desktop task")
         self.assertEqual(result.status, "completed")
+        collect_context_mock.assert_called_with([expected_path])
         self.assertEqual(client.os_contexts[0]["filesystem_status"][expected_path]["exists"], False)
 
     def test_action_error_stops_loop(self):
