@@ -7,8 +7,8 @@ google-generativeai>=0.8.0
 pynput>=1.7.6
 python-dotenv>=1.0.0
 pyttsx3>=2.90
-# PyAudio is required by speech_recognition for microphone input.
-# The project currently uses PyAudioWPatch on Python 3.14.
+# Required for microphone input through SpeechRecognition on Windows.
+PyAudioWPatch>=0.2.12.7
 
 # Optional F12 screen-click automation:
 # pyautogui>=0.9.54

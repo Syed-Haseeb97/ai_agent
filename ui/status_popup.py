@@ -43,7 +43,10 @@ class StatusPopup(QWidget):
         shadow.setBlurRadius(18)
         shadow.setColor(QColor(0, 0, 0, 160))
         shadow.setOffset(0, 3)
-        self.setGraphicsEffect(shadow)
+        # Diagnostic: disable the shadow to check whether its expanded dirty
+        # region triggers Windows' UpdateLayeredWindowIndirect warnings.
+        # If the warnings persist, restore this effect and inspect other windows.
+        # self.setGraphicsEffect(shadow)
 
         self._hide_timer = QTimer(self)
         self._hide_timer.setSingleShot(True)

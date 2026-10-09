@@ -16,6 +16,7 @@ from voice.listener import VoiceListener
 from voice.tts import TTS
 from vision.capture import capture_primary_screen
 from ai.gemini_client import GeminiClient
+from ai.mood_sync import write_mood_state
 
 
 class State(Enum):
@@ -33,6 +34,7 @@ class FloatingButton(QWidget):
     sig_user = pyqtSignal(int, str)
     sig_response = pyqtSignal(int, str)
     sig_state = pyqtSignal(int, object)
+    sig_emotion = pyqtSignal(int, str)
     sig_error = pyqtSignal(int, str)
     sig_finished = pyqtSignal(int)
 
@@ -54,6 +56,15 @@ class FloatingButton(QWidget):
         self._run_id = 0
         self._response_ready: dict[int, threading.Event] = {}
         self._continuous_mode = False
+        self._response_emotion = "neutral"
+        # Keep the tiny local state snapshot fresh while Ruby is speaking so
+        # the separate cursor overlay can mirror the same expression.
+        self._mood_sync_timer = QTimer(self)
+        self._mood_sync_timer.setInterval(2000)
+        self._mood_sync_timer.timeout.connect(
+            lambda: write_mood_state(self.state.name.lower(), self._response_emotion)
+        )
+        self._mood_sync_timer.start()
 
         screen = QApplication.primaryScreen().availableGeometry()
         self.move(screen.right() - 100, 34)
@@ -92,6 +103,7 @@ class FloatingButton(QWidget):
         self.sig_user.connect(self._on_user)
         self.sig_response.connect(self._on_response)
         self.sig_state.connect(self._on_state)
+        self.sig_emotion.connect(self._on_emotion)
         self.sig_error.connect(self._on_error)
         self.sig_finished.connect(self._on_finished)
         self.response_popup.submitted.connect(self.submit_text)
@@ -155,11 +167,25 @@ class FloatingButton(QWidget):
             State.IDLE: Mood.IDLE,
             State.LISTENING: Mood.LISTENING,
             State.THINKING: Mood.THINKING,
-            State.SPEAKING: Mood.SPEAKING,
+            State.SPEAKING: {
+                "neutral": Mood.SPEAKING,
+                "happy": Mood.HAPPY,
+                "excited": Mood.EXCITED,
+                "sad": Mood.SAD,
+                "empathetic": Mood.EMPATHETIC,
+                "curious": Mood.CURIOUS,
+                "surprised": Mood.SURPRISED,
+            }.get(self._response_emotion, Mood.SPEAKING),
             State.ERROR: Mood.ERROR,
         }
+        if state != State.SPEAKING:
+            self._response_emotion = "neutral"
         self.blob.set_mood(mood_map[state])
+        self.blob.set_speaking_active(state == State.SPEAKING)
         self.blob.set_thinking_spin_active(state == State.THINKING)
+        # Publish only bounded visual state so the cursor companion can mirror
+        # Ruby's expression across processes; no prompt or transcript is shared.
+        write_mood_state(state.name.lower(), self._response_emotion)
         self.blob.update()
 
     def _next_run(self): self._run_id += 1; return self._run_id
@@ -226,6 +252,7 @@ class FloatingButton(QWidget):
 
             action=self.action_executor.try_execute(user_text)
             if action.handled:
+                self.sig_emotion.emit(run_id, "neutral")
                 self.sig_response.emit(run_id,action.message)
                 self._wait_for_response_ui(run_id)
                 if not self._is_current(run_id): return
@@ -239,8 +266,9 @@ class FloatingButton(QWidget):
             jpeg_bytes,_=capture_primary_screen()
             if not self._is_current(run_id): return
             if self._gemini is None: self._gemini=GeminiClient()
-            answer=self._gemini.ask_with_screenshot(jpeg_bytes,user_text)
+            answer, emotion = self._gemini.ask_with_screenshot_and_emotion(jpeg_bytes,user_text)
             if not self._is_current(run_id): return
+            self.sig_emotion.emit(run_id, emotion)
             self.sig_response.emit(run_id,answer)
             self._wait_for_response_ui(run_id)
             if not self._is_current(run_id): return
@@ -256,6 +284,14 @@ class FloatingButton(QWidget):
 
     def _on_state(self,run_id,state):
         if self._is_current(run_id): self._set_state(state)
+
+    def _on_emotion(self, run_id, emotion):
+        if not self._is_current(run_id):
+            return
+        from ai.emotion import normalize_emotion
+        self._response_emotion = normalize_emotion(emotion)
+        write_mood_state(self.state.name.lower(), self._response_emotion)
+
     def _on_status(self,run_id,text):
         if not self._is_current(run_id): return
         if text: self.status_popup.show_message(text,self.pos())
@@ -269,14 +305,20 @@ class FloatingButton(QWidget):
             if ready is not None: ready.set()
     def _on_error(self,run_id,text):
         if not self._is_current(run_id): return
-        self.status_popup.show_message(f"⚠️ {text}",self.pos(),duration_ms=3500); self._set_state(State.ERROR)
-        QTimer.singleShot(2500,lambda rid=run_id:self._return_idle(rid))
+        # An error must stop continuous listening; otherwise an empty/failed
+        # listen immediately starts another run and oscillates ERROR/LISTENING.
+        self._set_continuous_ui(False)
+        self.status_popup.show_message(f"⚠️ {text}",self.pos(),duration_ms=3500)
+        self._set_state(State.ERROR)
+        QTimer.singleShot(2500, lambda rid=run_id: self._return_idle(rid))
     def _return_idle(self,run_id):
         if self._is_current(run_id): self._set_state(State.IDLE)
     def _on_finished(self,run_id):
         if not self._is_current(run_id): return
-        self.status_popup.hide_popup()
-        if self.state!=State.ERROR: self._set_state(State.IDLE)
+        # Keep the error message visible for its configured duration.
+        if self.state != State.ERROR:
+            self.status_popup.hide_popup()
+            self._set_state(State.IDLE)
         self._busy=False
         if self._continuous_mode:
             QTimer.singleShot(250, self._continue_listening)

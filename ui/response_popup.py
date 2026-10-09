@@ -1,12 +1,11 @@
-"""Persistent conversation panel with an always-available chat input."""
+"""Refined glass conversation panel for Ruby, the liquid-blob desktop companion."""
 
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QTextEdit, QGraphicsDropShadowEffect,
-    QPushButton, QHBoxLayout, QLineEdit
+    QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton, QHBoxLayout, QLineEdit
 )
 
 
@@ -15,86 +14,187 @@ class ResponsePopup(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.setFixedSize(410, 560)
+        self.setFixedSize(432, 540)
 
         card = QWidget()
         card.setObjectName("card")
         card.setStyleSheet("""
-            #card { background-color: rgba(22, 23, 30, 245); border-radius: 18px; border: 1px solid rgba(255,255,255,28); }
-            QLabel#title { color: #f4f4fb; padding: 12px 14px 4px; }
-            QLabel#subtitle { color: #858899; padding: 0 14px 10px; }
-            QPushButton { color: #999baa; background: transparent; border: none; font-size: 16px; }
-            QPushButton:hover { color: white; }
-            QTextEdit#history { color: #f1f1f6; background: transparent; border: none; padding: 8px 12px; }
-            QLineEdit#input { color: #ffffff; background: #25283a; border: 1px solid #454b69; border-radius: 12px; padding: 10px 12px; }
-            QLineEdit#input:focus { border: 1px solid #6857ff; }
-            QPushButton#send { color: #ffffff; background: #6857ff; border: none; border-radius: 11px; padding: 9px 13px; font-weight: 600; }
-            QPushButton#send:hover { background: #7969ff; }
+            QWidget#card {
+                background: rgba(19, 20, 27, 248);
+                border: 1px solid rgba(255, 255, 255, 22);
+                border-radius: 22px;
+            }
+            QLabel#eyebrow {
+                color: #a5a7ba;
+                background: transparent;
+                border: none;
+                padding: 0;
+                letter-spacing: 1px;
+            }
+            QLabel#title {
+                color: #f7f7fc;
+                background: transparent;
+                border: none;
+                padding: 0;
+            }
+            QLabel#status {
+                color: #9295a8;
+                background: transparent;
+                border: none;
+                padding: 0;
+            }
+            QPushButton#iconButton {
+                color: #a3a5b6;
+                background: rgba(255,255,255,5);
+                border: 1px solid rgba(255,255,255,13);
+                border-radius: 10px;
+                font-size: 15px;
+            }
+            QPushButton#iconButton:hover {
+                color: #ffffff;
+                background: rgba(255,255,255,12);
+                border-color: rgba(255,255,255,28);
+            }
+            QTextEdit#history {
+                color: #e9eaf2;
+                background: transparent;
+                border: none;
+                padding: 8px 4px;
+                selection-background-color: #5546c8;
+            }
+            QLineEdit#input {
+                color: #f7f7fc;
+                background: rgba(38, 39, 51, 230);
+                border: 1px solid rgba(255,255,255,18);
+                border-radius: 15px;
+                padding: 13px 15px;
+                selection-background-color: #6857ff;
+            }
+            QLineEdit#input:focus {
+                background: rgba(42, 42, 58, 245);
+                border: 1px solid rgba(139, 124, 255, 170);
+            }
+            QPushButton#send {
+                color: white;
+                background: #7464ff;
+                border: none;
+                border-radius: 14px;
+                font-size: 19px;
+                font-weight: 600;
+            }
+            QPushButton#send:hover { background: #8476ff; }
+            QPushButton#send:pressed { background: #5c4de0; }
         """)
 
-        title = QLabel("🤖  AI Screen Assistant")
-        title.setObjectName("title")
-        title.setFont(QFont("Segoe UI", 11, QFont.Weight.DemiBold))
-        subtitle = QLabel("Conversation history")
-        subtitle.setObjectName("subtitle")
-        subtitle.setFont(QFont("Segoe UI", 8))
+        eyebrow = QLabel("YOUR AI COMPANION")
+        eyebrow.setObjectName("eyebrow")
+        eyebrow.setFont(QFont("Segoe UI", 8, QFont.Weight.DemiBold))
 
-        close_btn = QPushButton("✕")
-        close_btn.setFixedSize(28, 28)
+        title = QLabel("Ruby")
+        title.setObjectName("title")
+        title.setFont(QFont("Segoe UI Variable Display", 17, QFont.Weight.DemiBold))
+
+        subtitle = QLabel("Ready when you are")
+        subtitle.setObjectName("status")
+        subtitle.setFont(QFont("Segoe UI", 9))
+
+        brand = QVBoxLayout()
+        brand.setSpacing(3)
+        brand.addWidget(eyebrow)
+        brand.addWidget(title)
+        brand.addWidget(subtitle)
+
+        close_btn = QPushButton("×")
+        close_btn.setObjectName("iconButton")
+        close_btn.setFixedSize(34, 34)
+        close_btn.setToolTip("Hide Ruby")
         close_btn.clicked.connect(self.hide)
+
         clear_btn = QPushButton("⌫")
-        clear_btn.setFixedSize(28, 28)
+        clear_btn.setObjectName("iconButton")
+        clear_btn.setFixedSize(34, 34)
         clear_btn.setToolTip("Clear conversation")
         clear_btn.clicked.connect(self.clear_history)
 
         top = QHBoxLayout()
-        labels = QVBoxLayout(); labels.setSpacing(0)
-        labels.addWidget(title); labels.addWidget(subtitle)
-        top.addLayout(labels); top.addStretch(); top.addWidget(clear_btn); top.addWidget(close_btn)
-        top.setContentsMargins(8, 5, 8, 0)
+        top.setContentsMargins(20, 18, 16, 14)
+        top.setSpacing(8)
+        top.addLayout(brand)
+        top.addStretch()
+        top.addWidget(clear_btn)
+        top.addWidget(close_btn)
+
+        separator = QWidget()
+        separator.setFixedHeight(1)
+        separator.setStyleSheet("background: rgba(255,255,255,13); border: none;")
 
         self.history = QTextEdit()
         self.history.setObjectName("history")
         self.history.setReadOnly(True)
         self.history.setFont(QFont("Segoe UI", 10))
-        self.history.setPlaceholderText("Your conversation will appear here…")
+        self.history.setFrameShape(QTextEdit.Shape.NoFrame)
+        self.history.setPlaceholderText(
+            "Hey, I'm Ruby.\n\nAsk me about what's on your screen, "
+            "or type a question below."
+        )
 
         self.input_edit = QLineEdit()
         self.input_edit.setObjectName("input")
-        self.input_edit.setPlaceholderText("Type a message…")
-        self.input_edit.setClearButtonEnabled(True)
+        self.input_edit.setPlaceholderText("Message Ruby…")
+        self.input_edit.setClearButtonEnabled(False)
         self.input_edit.returnPressed.connect(self._submit)
 
-        send = QPushButton("➤")
+        send = QPushButton("↑")
         send.setObjectName("send")
-        send.setFixedWidth(48)
-        send.setToolTip("Send")
+        send.setFixedSize(48, 48)
+        send.setToolTip("Send message")
         send.clicked.connect(self._submit)
 
         input_row = QHBoxLayout()
-        input_row.setContentsMargins(10, 4, 10, 4)
-        input_row.setSpacing(7)
+        input_row.setContentsMargins(16, 12, 16, 16)
+        input_row.setSpacing(9)
         input_row.addWidget(self.input_edit, 1)
         input_row.addWidget(send)
 
         lay = QVBoxLayout(card)
-        lay.setContentsMargins(0, 0, 0, 8)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
         lay.addLayout(top)
+        lay.addWidget(separator)
         lay.addWidget(self.history, 1)
         lay.addLayout(input_row)
-        root = QVBoxLayout(self); root.setContentsMargins(0, 0, 0, 0); root.addWidget(card)
 
-        shadow = QGraphicsDropShadowEffect(self); shadow.setBlurRadius(30); shadow.setColor(QColor(0,0,0,190)); shadow.setOffset(0,8); self.setGraphicsEffect(shadow)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.addWidget(card)
 
     def _append(self, speaker: str, text: str) -> None:
-        if not text.strip(): return
-        label = "You" if speaker == "user" else "🤖 Assistant"
-        safe = (text.strip().replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace(chr(10), "<br>"))
-        self.history.append(f'<p style="margin:8px 0 3px; color:#8f91a3; font-size:9pt;"><b>{label}</b></p><p style="margin:0 0 10px; color:#f1f1f6;">{safe}</p>')
-        self.history.verticalScrollBar().setValue(self.history.verticalScrollBar().maximum())
+        if not text.strip():
+            return
+        label = "YOU" if speaker == "user" else "RUBY"
+        safe = (
+            text.strip()
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace(chr(10), "<br>")
+        )
+        label_color = "#aaa0ff" if speaker == "user" else "#a5a7ba"
+        self.history.append(
+            f'<p style="margin:14px 0 5px; color:{label_color}; '
+            f'font-size:8pt; letter-spacing:1px;"><b>{label}</b></p>'
+            f'<p style="margin:0 0 12px; color:#f0f0f7; '
+            f'font-size:10pt; line-height:1.5;">{safe}</p>'
+        )
+        bar = self.history.verticalScrollBar()
+        bar.setValue(bar.maximum())
 
     def add_user_message(self, text: str, near: QPoint) -> None:
         self._append("user", text)
@@ -113,7 +213,9 @@ class ResponsePopup(QWidget):
     def _position(self, near: QPoint) -> None:
         x = max(12, near.x() - self.width() - 12)
         y = max(12, near.y() + 10)
-        self.move(x, y); self.show(); self.raise_()
+        self.move(x, y)
+        self.show()
+        self.raise_()
 
     def _submit(self) -> None:
         text = self.input_edit.text().strip()

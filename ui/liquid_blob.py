@@ -16,7 +16,11 @@ class Mood(str, Enum):
     THINKING = "Thinking"
     SPEAKING = "Speaking"
     HAPPY = "Happy"
+    EXCITED = "Excited"
     SAD = "Sad"
+    EMPATHETIC = "Empathetic"
+    CURIOUS = "Curious"
+    SURPRISED = "Surprised"
     ERROR = "Error"
 
 
@@ -26,7 +30,11 @@ MOOD_COLORS = {
     Mood.THINKING: (QColor("#a78bfa"), QColor("#4f46e5")),
     Mood.SPEAKING: (QColor("#60a5fa"), QColor("#7c3aed")),
     Mood.HAPPY: (QColor("#c084fc"), QColor("#3b82f6")),
+    Mood.EXCITED: (QColor("#fb7185"), QColor("#7c3aed")),
     Mood.SAD: (QColor("#60a5fa"), QColor("#60a5fa")),
+    Mood.EMPATHETIC: (QColor("#7dd3fc"), QColor("#818cf8")),
+    Mood.CURIOUS: (QColor("#67e8f9"), QColor("#8b5cf6")),
+    Mood.SURPRISED: (QColor("#a5b4fc"), QColor("#ec4899")),
     Mood.ERROR: (QColor("#ff526b"), QColor("#b91235")),
 }
 
@@ -41,6 +49,7 @@ class LiquidBlob(QWidget):
         self.hovered = False
         self._spin_active = False
         self._spin_angle = 0.0
+        self._speaking_active = False
         self.setMinimumSize(300, 280)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -83,6 +92,18 @@ class LiquidBlob(QWidget):
             self._spin_active = False
             self.update()
 
+    def set_speaking_active(self, active: bool) -> None:
+        """Animate the mouth independently from the selected emotional expression."""
+        active = bool(active)
+        if self._speaking_active != active:
+            self._speaking_active = active
+            self.update()
+
+    @staticmethod
+    def uses_black_core(mood: Mood) -> bool:
+        """Only the approved neutral/listening/speaking expressions use the dark face core."""
+        return mood in (Mood.IDLE, Mood.LISTENING, Mood.SPEAKING)
+
     def enterEvent(self, event) -> None:
         self.hovered = True
         self.update()
@@ -104,6 +125,14 @@ class LiquidBlob(QWidget):
         energy = 0.025
         if mood == Mood.HAPPY:
             energy = 0.065
+        elif mood == Mood.EXCITED:
+            energy = 0.085
+        elif mood == Mood.CURIOUS:
+            energy = 0.035
+        elif mood == Mood.SURPRISED:
+            energy = 0.055
+        elif mood == Mood.EMPATHETIC:
+            energy = 0.022
         elif mood == Mood.LISTENING:
             energy = 0.038
         elif mood == Mood.THINKING:
@@ -126,8 +155,8 @@ class LiquidBlob(QWidget):
             if mood == Mood.SAD:
                 # A subtly heavier lower half gives the body a drooping silhouette.
                 deform += max(0.0, math.sin(angle)) * 0.035
-            elif mood == Mood.HAPPY:
-                deform += math.sin(angle * 2 + t * 2.0) * 0.018
+            elif mood in (Mood.HAPPY, Mood.EXCITED):
+                deform += math.sin(angle * 2 + t * (2.8 if mood == Mood.EXCITED else 2.0)) * (0.026 if mood == Mood.EXCITED else 0.018)
             elif mood == Mood.ERROR:
                 deform += math.sin(angle * 7 + t * 9.0) * 0.018
             r = radius * deform
@@ -158,9 +187,9 @@ class LiquidBlob(QWidget):
         if self.hovered:
             radius *= 1.025
 
-        breathe = math.sin(t * (1.9 if self.mood != Mood.SAD else 0.8))
-        if self.mood == Mood.HAPPY:
-            cy -= abs(math.sin(t * 3.2)) * 5
+        breathe = math.sin(t * (1.9 if self.mood not in (Mood.SAD, Mood.EMPATHETIC) else 0.8))
+        if self.mood in (Mood.HAPPY, Mood.EXCITED):
+            cy -= abs(math.sin(t * (4.2 if self.mood == Mood.EXCITED else 3.2)) * (7 if self.mood == Mood.EXCITED else 5))
         elif self.mood == Mood.SAD:
             cy += 3 + abs(breathe) * 3
         elif self.mood == Mood.THINKING:
@@ -203,7 +232,7 @@ class LiquidBlob(QWidget):
 
         # Everyday states have two distinct layers: a solid, glass-like face orb,
         # surrounded by the continuously deforming liquid body.
-        has_black_core = self.mood in (Mood.IDLE, Mood.LISTENING, Mood.SPEAKING, Mood.SAD)
+        has_black_core = self.uses_black_core(self.mood)
         core_radius = radius * 0.63
 
         body = self._body_path(cx, cy, radius, t)
@@ -312,7 +341,7 @@ class LiquidBlob(QWidget):
 
     def _draw_face(self, painter: QPainter, cx: float, cy: float, r: float, t: float) -> None:
         mood = self.mood
-        has_black_core = mood in (Mood.IDLE, Mood.LISTENING, Mood.SPEAKING, Mood.SAD)
+        has_black_core = self.uses_black_core(mood)
         gaze_x = 0.0
         gaze_y = 0.0
         if mood == Mood.THINKING:
@@ -322,17 +351,22 @@ class LiquidBlob(QWidget):
             gaze_y = -2.0
         elif mood == Mood.LISTENING:
             gaze_x = math.sin(t * 2.2) * 2.5
-        elif mood == Mood.HAPPY:
+        elif mood in (Mood.HAPPY, Mood.EXCITED):
             gaze_y = -1.5
-        elif mood == Mood.SAD:
-            gaze_y = 3.0
+        elif mood == Mood.CURIOUS:
+            gaze_x = r * 0.055
+            gaze_y = -r * 0.035
+        elif mood == Mood.SURPRISED:
+            gaze_y = -r * 0.015
+        elif mood in (Mood.SAD, Mood.EMPATHETIC):
+            gaze_y = 3.0 if mood == Mood.SAD else 1.5
         elif mood == Mood.ERROR:
             gaze_x = math.sin(t * 14.0) * 2.0
 
         eye_y = cy - r * 0.015 + gaze_y
         eye_dx = r * 0.29
-        eye_w = r * 0.105
-        eye_h = r * 0.245
+        eye_w = r * (0.115 if mood == Mood.SURPRISED else 0.105)
+        eye_h = r * (0.29 if mood == Mood.SURPRISED else 0.245)
 
         # Gentle periodic blink, shared by the white eyes in every non-smile state.
         # A short smooth close/open cycle roughly every 3.5–5 seconds.
@@ -347,8 +381,12 @@ class LiquidBlob(QWidget):
 
         if mood == Mood.SAD:
             eye_h *= 0.82
-        elif mood == Mood.HAPPY:
+        elif mood == Mood.EMPATHETIC:
+            eye_h *= 0.9
+        elif mood in (Mood.HAPPY, Mood.EXCITED):
             eye_h *= 0.52
+        elif mood == Mood.CURIOUS:
+            eye_h *= 1.08
         elif mood == Mood.ERROR:
             eye_h *= 0.8
 
@@ -358,7 +396,7 @@ class LiquidBlob(QWidget):
             this_eye_h = eye_h
             painter.save()
             painter.translate(ex, ey)
-            if mood == Mood.HAPPY:
+            if mood in (Mood.HAPPY, Mood.EXCITED):
                 # Closed smiling eyes with a fine dark outline for definition.
                 arc = QPainterPath()
                 arc.moveTo(-eye_w * 0.9, this_eye_h * 0.15)
@@ -380,8 +418,9 @@ class LiquidBlob(QWidget):
             painter.restore()
 
         if mood == Mood.SPEAKING:
-            # A readable, softly animated rose-lilac mouth: larger than a dot,
-            # but still restrained, with a dark plum edge against the black core.
+            # Neutral speech gets the animated rose-lilac mouth. Emotional moods
+            # keep their own mouth shape below while _speaking_active drives the
+            # overall talking state, so speech never erases the chosen expression.
             voice = (math.sin(t * 11.0) + 1.0) / 2.0
             mouth_w = r * (0.19 + voice * 0.035)
             mouth_h = r * (0.055 + abs(math.sin(t * 11.0)) * 0.075)
@@ -395,6 +434,34 @@ class LiquidBlob(QWidget):
             painter.setPen(QPen(QColor("#3a1738"), max(1.0, r * 0.018)))
             painter.setBrush(QBrush(mouth_gradient))
             painter.drawEllipse(mouth_rect)
+        elif mood == Mood.EXCITED:
+            # A small open smile makes Excited distinct from calm Happy.
+            mouth_w = r * 0.22
+            mouth_h = r * (0.095 + abs(math.sin(t * 4.0)) * 0.035)
+            mouth_rect = QRectF(cx - mouth_w / 2, cy + r * 0.17, mouth_w, mouth_h)
+            painter.setPen(QPen(QColor("#4a174d"), max(1.0, r * 0.018)))
+            painter.setBrush(QBrush(QColor("#5b174e")))
+            painter.drawEllipse(mouth_rect)
+        elif mood == Mood.SURPRISED:
+            mouth_w, mouth_h = r * 0.095, r * 0.13
+            mouth_rect = QRectF(cx - mouth_w / 2, cy + r * 0.17, mouth_w, mouth_h)
+            painter.setPen(QPen(QColor("#4a174d"), max(1.0, r * 0.018)))
+            painter.setBrush(QBrush(QColor("#3b1747")))
+            painter.drawEllipse(mouth_rect)
+        elif mood == Mood.CURIOUS:
+            mouth_w, mouth_h = r * 0.13, r * 0.035
+            mouth_rect = QRectF(cx - mouth_w / 2, cy + r * 0.20, mouth_w, mouth_h)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(QColor("#3f255d")))
+            painter.drawEllipse(mouth_rect)
+        elif mood == Mood.EMPATHETIC:
+            # A quiet, reassuring expression; distinct from the downturned Sad mood.
+            comfort_arc = QPainterPath()
+            comfort_arc.moveTo(cx - r * 0.11, cy + r * 0.23)
+            comfort_arc.quadTo(cx, cy + r * 0.30, cx + r * 0.11, cy + r * 0.23)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(QPen(QColor("#eff6ff"), 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawPath(comfort_arc)
         elif mood == Mood.LISTENING:
             # Original calm listening face; no eyebrow gimmick or orbiting dots.
             pass
