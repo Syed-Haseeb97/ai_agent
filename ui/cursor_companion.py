@@ -5,6 +5,7 @@ from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSlot
 from PyQt6.QtGui import QCursor
 from PyQt6.QtWidgets import QApplication, QWidget
 
+from ai.mood_sync import read_mood_state
 from ui.liquid_blob import LiquidBlob, Mood
 
 
@@ -58,6 +59,12 @@ class CursorCompanion(QWidget):
         self._release_timer.timeout.connect(self._park_at_cursor)
         self._parked_pos = self.pos()
 
+        self._mood_sync_timer = QTimer(self)
+        self._mood_sync_timer.setInterval(300)
+        self._mood_sync_timer.timeout.connect(self._sync_shared_mood)
+        self._mood_sync_timer.start()
+        self._sync_shared_mood()
+
         self._motion_timer = QTimer(self)
         self._motion_timer.setInterval(16)
         self._motion_timer.timeout.connect(self._animate_position)
@@ -102,6 +109,37 @@ class CursorCompanion(QWidget):
         self._return_phase = "wall_approach"
         self._wall_x = self._right_edge_x()
         self.blob.set_mood(Mood.IDLE)
+
+    def _sync_shared_mood(self) -> None:
+        """Mirror Ruby's fresh shared mood when the overlay is not animating an action."""
+        if self._following or self._return_phase not in {"idle", "parked"}:
+            return
+        snapshot = read_mood_state()
+        if snapshot is None:
+            mood = Mood.IDLE
+        else:
+            state = snapshot["state"]
+            emotion = snapshot["emotion"]
+            if state == "speaking":
+                mood = {
+                    "neutral": Mood.SPEAKING,
+                    "happy": Mood.HAPPY,
+                    "excited": Mood.EXCITED,
+                    "sad": Mood.SAD,
+                    "empathetic": Mood.EMPATHETIC,
+                    "curious": Mood.CURIOUS,
+                    "surprised": Mood.SURPRISED,
+                }.get(emotion, Mood.SPEAKING)
+            else:
+                mood = {
+                    "idle": Mood.IDLE,
+                    "listening": Mood.LISTENING,
+                    "thinking": Mood.THINKING,
+                    "error": Mood.ERROR,
+                }.get(state, Mood.IDLE)
+        if self.blob.mood != mood:
+            self.blob.set_mood(mood)
+            self.blob.update()
 
     def _screen_left_x(self) -> int:
         screen = QApplication.primaryScreen()
@@ -176,4 +214,5 @@ class CursorCompanion(QWidget):
         self._motion_timer.stop()
         self._release_timer.stop()
         self._wall_hit_timer.stop()
+        self._mood_sync_timer.stop()
         super().closeEvent(event)
