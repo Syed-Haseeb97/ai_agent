@@ -55,7 +55,11 @@ class CursorCompanion(QWidget):
         self._release_timer = QTimer(self)
         self._release_timer.setSingleShot(True)
         self._release_timer.setInterval(self.RELEASE_GRACE_MS)
-        self._release_timer.timeout.connect(self.return_home)
+        self._park_timer = QTimer(self)
+        self._park_timer.setSingleShot(True)
+        self._park_timer.setInterval(self.RELEASE_GRACE_MS)
+        self._park_timer.timeout.connect(self._park_at_cursor)
+        self._parked_pos = self.pos()
 
         self._motion_timer = QTimer(self)
         self._motion_timer.setInterval(16)
@@ -75,6 +79,7 @@ class CursorCompanion(QWidget):
     def follow_cursor(self, _action=None) -> None:
         """Begin following before an action; cancel any pending return animation."""
         self._release_timer.stop()
+        self._park_timer.stop()
         self._wall_hit_timer.stop()
         self._following = True
         self._return_phase = "following"
@@ -86,14 +91,27 @@ class CursorCompanion(QWidget):
         if self._following:
             self._release_timer.start()
 
+    def _park_at_cursor(self) -> None:
+        """Park at the last cursor-follow position between actions; only task completion returns home."""
+        if self._following:
+            self._following = False
+            self._parked_pos = self.pos()
+            self._return_phase = "parked"
+
     def return_home(self) -> None:
         """Dash to the right screen edge, get briefly dizzy, then settle at home."""
         self._release_timer.stop()
+        self._park_timer.stop()
         self._wall_hit_timer.stop()
         self._following = False
         self._return_phase = "wall_approach"
         self._wall_x = self._right_edge_x()
         self.blob.set_mood(Mood.IDLE)
+
+    def _screen_left_x(self) -> int:
+        screen = QApplication.primaryScreen()
+        bounds = screen.availableGeometry() if screen else self.geometry()
+        return bounds.left()
 
     def _right_edge_x(self) -> int:
         screen = QApplication.primaryScreen()
@@ -130,7 +148,9 @@ class CursorCompanion(QWidget):
         elif self._return_phase == "wall_approach":
             target = QPoint(self._wall_x, self._home.y())
         elif self._return_phase == "wall_recoil":
-            target = QPoint(max(0, self._wall_x - self.WALL_RECOIL_PX), self._home.y())
+            target = QPoint(max(self._screen_left_x(), self._wall_x - self.WALL_RECOIL_PX - 18), self._home.y())
+        elif self._return_phase == "parked":
+            target = self._parked_pos
         else:
             target = self._home
 
@@ -160,5 +180,6 @@ class CursorCompanion(QWidget):
     def closeEvent(self, event) -> None:
         self._motion_timer.stop()
         self._release_timer.stop()
+        self._park_timer.stop()
         self._wall_hit_timer.stop()
         super().closeEvent(event)
