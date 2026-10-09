@@ -134,8 +134,6 @@ class LiquidBlob(QWidget):
         radius = min(w * 0.34, h * 0.34, 150.0)
         if self.hovered:
             radius *= 1.025
-        if self.mood == Mood.LISTENING:
-            radius *= 1.0 + 0.025 * (0.5 + 0.5 * math.sin(t * 2.8))
 
         breathe = math.sin(t * (1.9 if self.mood != Mood.SAD else 0.8))
         if self.mood == Mood.HAPPY:
@@ -170,8 +168,7 @@ class LiquidBlob(QWidget):
 
         # Everyday states have two distinct layers: a solid, glass-like face orb,
         # surrounded by the continuously deforming liquid body.
-        has_glass_core = self.mood in (Mood.IDLE, Mood.LISTENING, Mood.SPEAKING, Mood.SAD)
-        has_rigid_core = has_glass_core
+        has_black_core = self.mood in (Mood.IDLE, Mood.LISTENING, Mood.SPEAKING, Mood.SAD)
         core_radius = radius * 0.63
 
         body = self._body_path(cx, cy, radius, t)
@@ -199,31 +196,29 @@ class LiquidBlob(QWidget):
         painter.setBrush(QBrush(shine))
         painter.drawEllipse(QRectF(cx - radius * 0.92, cy - radius * 0.98, radius * 1.2, radius * 0.92))
 
-        if has_rigid_core:
-            # A genuinely separate inner orb: its own opaque pearl-blue material,
-            # highlight, darker lower rim, and crisp edge. This is drawn OVER the
-            # liquid shell so the two materials remain visibly distinct.
-            orb = QRadialGradient(QPointF(cx - core_radius * 0.32,
-                                          cy - core_radius * 0.42),
-                                  core_radius * 1.55)
-            orb.setColorAt(0.0, QColor(245, 252, 255, 104))
-            orb.setColorAt(0.18, QColor(205, 229, 255, 66))
-            orb.setColorAt(0.48, QColor(145, 183, 255, 45))
-            orb.setColorAt(0.78, QColor(115, 145, 225, 62))
-            orb.setColorAt(0.96, QColor(225, 242, 255, 92))
-            orb.setColorAt(1.0, QColor(225, 242, 255, 92))
-            painter.setPen(QPen(QColor(235, 248, 255, 190), 1.8))
+        if has_black_core:
+            # A clearly separate, opaque black sphere with a restrained charcoal
+            # highlight and subtle rim. White eyes remain high-contrast and readable.
+            orb = QRadialGradient(
+                QPointF(cx - core_radius * 0.32, cy - core_radius * 0.42),
+                core_radius * 1.55,
+            )
+            orb.setColorAt(0.0, QColor("#30313a"))
+            orb.setColorAt(0.22, QColor("#17181e"))
+            orb.setColorAt(0.68, QColor("#08090d"))
+            orb.setColorAt(0.94, QColor("#020305"))
+            orb.setColorAt(1.0, QColor("#000000"))
+            painter.setPen(QPen(QColor("#555965"), 1.5))
             painter.setBrush(QBrush(orb))
             painter.drawEllipse(QRectF(cx - core_radius, cy - core_radius,
                                        core_radius * 2, core_radius * 2))
 
-            # Crisp inner specular highlight makes the orb read as a separate object.
             core_shine = QRadialGradient(
                 QPointF(cx - core_radius * 0.38, cy - core_radius * 0.55),
                 core_radius * 0.78,
             )
-            core_shine.setColorAt(0.0, QColor(255, 255, 255, 115))
-            core_shine.setColorAt(0.45, QColor(225, 244, 255, 34))
+            core_shine.setColorAt(0.0, QColor(255, 255, 255, 52))
+            core_shine.setColorAt(0.45, QColor(210, 220, 240, 13))
             core_shine.setColorAt(1.0, QColor(255, 255, 255, 0))
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QBrush(core_shine))
@@ -231,7 +226,7 @@ class LiquidBlob(QWidget):
                                        cy - core_radius * 0.96,
                                        core_radius * 1.15, core_radius * 0.78))
 
-        face_radius = core_radius * 0.88 if has_glass_core else radius
+        face_radius = core_radius * 0.88 if has_black_core else radius
         self._draw_face(painter, cx, cy, face_radius, t)
 
         # A tiny specular glint reinforces the glassy material.
@@ -241,14 +236,14 @@ class LiquidBlob(QWidget):
 
     def _draw_face(self, painter: QPainter, cx: float, cy: float, r: float, t: float) -> None:
         mood = self.mood
-        has_glass_core = mood in (Mood.IDLE, Mood.LISTENING, Mood.SPEAKING, Mood.SAD)
+        has_black_core = mood in (Mood.IDLE, Mood.LISTENING, Mood.SPEAKING, Mood.SAD)
         gaze_x = 0.0
         gaze_y = 0.0
         if mood == Mood.THINKING:
             gaze_x = math.sin(t * 0.75) * 7.0 + 5.0
             gaze_y = -5.0 + math.sin(t * 1.5) * 2.0
         elif mood == Mood.LISTENING:
-            gaze_x = 2.0 + math.sin(t * 1.5) * 1.2
+            gaze_x = math.sin(t * 2.2) * 2.5
         elif mood == Mood.HAPPY:
             gaze_y = -1.5
         elif mood == Mood.SAD:
@@ -260,8 +255,6 @@ class LiquidBlob(QWidget):
         eye_dx = r * 0.29
         eye_w = r * 0.105
         eye_h = r * 0.245
-        if mood == Mood.LISTENING:
-            eye_h *= 1.12
 
         # Gentle periodic blink, shared by the white eyes in every non-smile state.
         # A short smooth close/open cycle roughly every 3.5–5 seconds.
@@ -287,7 +280,7 @@ class LiquidBlob(QWidget):
         for sign in (-1, 1):
             ex = cx + sign * eye_dx + gaze_x
             ey = eye_y
-            this_eye_h = eye_h * (1.42 if mood == Mood.LISTENING and sign == 1 else 0.72 if mood == Mood.LISTENING else 1.0)
+            this_eye_h = eye_h
             painter.save()
             painter.translate(ex, ey)
             if mood == Mood.HAPPY:
@@ -301,7 +294,7 @@ class LiquidBlob(QWidget):
             else:
                 painter.setPen(Qt.PenStyle.NoPen)
                 eye_gradient = QLinearGradient(-eye_w, -this_eye_h, eye_w, this_eye_h)
-                if has_glass_core:
+                if has_black_core:
                     eye_gradient.setColorAt(0.0, QColor("#050914"))
                     eye_gradient.setColorAt(1.0, QColor("#172033"))
                 else:
@@ -318,15 +311,8 @@ class LiquidBlob(QWidget):
             painter.setBrush(QColor(20, 18, 55, 210))
             painter.drawEllipse(QRectF(cx - mouth_w / 2, cy + r * 0.18, mouth_w, mouth_h))
         elif mood == Mood.LISTENING:
-            # One raised eyebrow: playful, curious, leaning-in listening expression.
-            brow = QPainterPath()
-            brow.moveTo(cx + r * 0.13, cy - r * 0.19)
-            brow.quadTo(cx + r * 0.29, cy - r * 0.39, cx + r * 0.43, cy - r * 0.22)
-            painter.setPen(QPen(QColor("#080d18") if has_glass_core else QColor("#f8fbff"),
-                                max(2.5, r * 0.045), Qt.PenStyle.SolidLine,
-                                Qt.PenCapStyle.RoundCap))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawPath(brow)
+            # Original calm listening face; no eyebrow gimmick or orbiting dots.
+            pass
         elif mood == Mood.SAD:
             painter.setPen(QPen(QColor(235, 240, 255, 190), 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             painter.drawArc(QRectF(cx - r * 0.13, cy + r * 0.19, r * 0.26, r * 0.12), 25 * 16, 130 * 16)
