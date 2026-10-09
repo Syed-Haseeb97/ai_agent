@@ -56,7 +56,8 @@ class EmotionParserTests(unittest.TestCase):
     def test_malformed_json_is_kept_as_plain_text(self):
         raw = '{"response": "broken", "emotion": '
         answer, emotion = parse_emotion_response(raw)
-        self.assertEqual(answer, raw)
+        # The parser intentionally trims surrounding whitespace before fallback.
+        self.assertEqual(answer, raw.strip())
         self.assertEqual(emotion, "neutral")
 
 
