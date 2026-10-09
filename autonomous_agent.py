@@ -6,7 +6,6 @@ import logging
 import threading
 
 from pynput import keyboard
-
 from agent.autonomous_loop import AutonomousAgent
 
 
@@ -17,9 +16,20 @@ def main() -> int:
     parser.add_argument("--max-hours", type=float, default=4.0)
     args = parser.parse_args()
 
-    logging.basicConfig(filename="autonomous_agent.log", level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        filename="autonomous_agent.log",
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
     stop_event = threading.Event()
-    hotkey = keyboard.GlobalHotKeys({"<ctrl>+<alt>+<shift>+r": stop_event.set})
+
+    def emergency_stop() -> None:
+        logging.critical("Emergency stop hotkey pressed; requesting cooperative stop.")
+        stop_event.set()
+
+    # pynput owns an independent listener thread. Prefer cooperative cancellation
+    # over os._exit(), which can leave the desktop in a partially completed state.
+    hotkey = keyboard.GlobalHotKeys({"<ctrl>+<alt>+<shift>+q": emergency_stop})
     hotkey.start()
     try:
         goal = " ".join(args.goal)
@@ -33,6 +43,7 @@ def main() -> int:
         print(f"Ruby autonomous mode: {result.status} — {result.message}")
         return 0 if result.status == "completed" else 2
     finally:
+        stop_event.set()
         hotkey.stop()
 
 
