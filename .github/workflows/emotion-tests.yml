@@ -1,18 +1,21 @@
-name: Ruby emotion regression tests
+name: Ruby companion UI and emotion regression tests
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feature/ruby-emotional-expressions]
     paths:
       - "ai/emotion.py"
       - "ai/gemini_client.py"
       - "ui/liquid_blob.py"
       - "ui/floating_button.py"
+      - "ui/response_popup.py"
+      - "ui/status_popup.py"
       - "tests/test_emotion_parser.py"
       - "tests/test_liquid_blob_moods.py"
+      - "tests/test_response_popup.py"
       - ".github/workflows/emotion-tests.yml"
   push:
-    branches: [feature/ruby-emotional-expressions]
+    branches: [feature/ruby-emotional-expressions, feature/ruby-companion-ui-polish]
     paths:
       - "ai/emotion.py"
       - "ai/gemini_client.py"
@@ -41,4 +44,4 @@ jobs:
       - name: Run emotion regression tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q tests/test_emotion_parser.py tests/test_liquid_blob_moods.py
+        run: python -m pytest -q tests/test_emotion_parser.py tests/test_liquid_blob_moods.py tests/test_response_popup.py
