@@ -188,13 +188,9 @@ class LiquidBlob(QWidget):
         painter.setPen(QPen(QColor(255, 255, 255, 42), 1.0))
         painter.drawPath(self._body_path(cx - 1.5, cy - 2.0, radius * 0.955, t + 0.08))
 
-        shine = QRadialGradient(QPointF(cx - radius * 0.36, cy - radius * 0.58), radius * 0.8)
-        shine.setColorAt(0.0, QColor(255, 255, 255, 85))
-        shine.setColorAt(0.38, QColor(210, 230, 255, 28))
-        shine.setColorAt(1.0, QColor(255, 255, 255, 0))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(shine))
-        painter.drawEllipse(QRectF(cx - radius * 0.92, cy - radius * 0.98, radius * 1.2, radius * 0.92))
+        # Removed the broad radial shine overlay: it created an unwanted
+        # circular blue/pink shade across every liquid body.
+
 
         if has_black_core:
             # A clearly separate, opaque black sphere with a restrained charcoal
@@ -213,18 +209,8 @@ class LiquidBlob(QWidget):
             painter.drawEllipse(QRectF(cx - core_radius, cy - core_radius,
                                        core_radius * 2, core_radius * 2))
 
-            core_shine = QRadialGradient(
-                QPointF(cx - core_radius * 0.38, cy - core_radius * 0.55),
-                core_radius * 0.78,
-            )
-            core_shine.setColorAt(0.0, QColor(255, 255, 255, 52))
-            core_shine.setColorAt(0.45, QColor(210, 220, 240, 13))
-            core_shine.setColorAt(1.0, QColor(255, 255, 255, 0))
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QBrush(core_shine))
-            painter.drawEllipse(QRectF(cx - core_radius * 0.92,
-                                       cy - core_radius * 0.96,
-                                       core_radius * 1.15, core_radius * 0.78))
+            # Keep the black core clean and opaque; no extra highlight overlay.
+
 
         face_radius = core_radius * 0.88 if has_black_core else radius
         self._draw_face(painter, cx, cy, face_radius, t)
@@ -294,12 +280,8 @@ class LiquidBlob(QWidget):
             else:
                 painter.setPen(Qt.PenStyle.NoPen)
                 eye_gradient = QLinearGradient(-eye_w, -this_eye_h, eye_w, this_eye_h)
-                if has_black_core:
-                    eye_gradient.setColorAt(0.0, QColor("#050914"))
-                    eye_gradient.setColorAt(1.0, QColor("#172033"))
-                else:
-                    eye_gradient.setColorAt(0.0, QColor("#ffffff"))
-                    eye_gradient.setColorAt(1.0, QColor("#cfe5ff"))
+                eye_gradient.setColorAt(0.0, QColor("#ffffff"))
+                eye_gradient.setColorAt(1.0, QColor("#cfe5ff"))
                 painter.setBrush(QBrush(eye_gradient))
                 painter.drawEllipse(QRectF(-eye_w / 2, -this_eye_h / 2, eye_w, this_eye_h))
             painter.restore()
