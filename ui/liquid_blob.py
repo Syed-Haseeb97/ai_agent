@@ -99,6 +99,11 @@ class LiquidBlob(QWidget):
             self._speaking_active = active
             self.update()
 
+    @staticmethod
+    def uses_black_core(mood: Mood) -> bool:
+        """Only the approved neutral/listening/speaking expressions use the dark face core."""
+        return mood in (Mood.IDLE, Mood.LISTENING, Mood.SPEAKING)
+
     def enterEvent(self, event) -> None:
         self.hovered = True
         self.update()
@@ -227,7 +232,7 @@ class LiquidBlob(QWidget):
 
         # Everyday states have two distinct layers: a solid, glass-like face orb,
         # surrounded by the continuously deforming liquid body.
-        has_black_core = self.mood in (Mood.IDLE, Mood.LISTENING, Mood.SPEAKING)
+        has_black_core = self.uses_black_core(self.mood)
         core_radius = radius * 0.63
 
         body = self._body_path(cx, cy, radius, t)
@@ -336,7 +341,7 @@ class LiquidBlob(QWidget):
 
     def _draw_face(self, painter: QPainter, cx: float, cy: float, r: float, t: float) -> None:
         mood = self.mood
-        has_black_core = mood in (Mood.IDLE, Mood.LISTENING, Mood.SPEAKING)
+        has_black_core = self.uses_black_core(mood)
         gaze_x = 0.0
         gaze_y = 0.0
         if mood == Mood.THINKING:
