@@ -1,9 +1,9 @@
 name: Autonomous Agent and Cursor Companion Tests
 on:
   push:
-    branches: [main, feature/autonomous-agent-mode, feature/ruby-cursor-follow]
+    branches: [main, feature/autonomous-agent-mode, feature/ruby-cursor-follow, feature/ruby-cursor-follow-ready]
   pull_request:
-    branches: [main, feature/ruby-companion-ui-polish]
+    branches: [main, feature/ruby-companion-ui-polish, feature/ruby-companion-ui-polish-ready]
 jobs:
   unit:
     runs-on: ubuntu-latest
