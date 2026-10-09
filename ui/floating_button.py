@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import threading
 from enum import Enum, auto
 
@@ -120,6 +119,16 @@ class FloatingButton(QWidget):
             self.stop_listening_button.raise_()
         self.update()
 
+
+    def enterEvent(self, event):
+        self.blob.hovered = True
+        self.blob.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.blob.hovered = False
+        self.blob.update()
+        super().leaveEvent(event)
 
     def mousePressEvent(self,event):
         if event.button()==Qt.MouseButton.LeftButton:
