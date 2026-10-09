@@ -8,12 +8,9 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from agent.computer_use import (
-    ComputerUseClient, WindowsComputerExecutor, extract_actions, extract_text,
-    function_results,
-)
+from agent.computer_use import ComputerUseClient, WindowsComputerExecutor, extract_actions, extract_text, function_results
 from agent.policy import AutonomousPolicy
-from agent.verifier import collect_os_context, verify_goal_file_outputs
+from agent.verifier import collect_os_context, verify_goal_app_launch, verify_goal_file_outputs
 from vision.capture import capture_primary_screen
 
 
@@ -85,6 +82,8 @@ class AutonomousAgent:
                 actions = extract_actions(interaction)
                 if not actions:
                     verification = verify_goal_file_outputs(goal)
+                    if verification is None:
+                        verification = verify_goal_app_launch(goal)
                     if verification is None or verification[0]:
                         message = extract_text(interaction) or "The agent finished without further UI actions."
                         if verification is not None:
@@ -102,8 +101,7 @@ class AutonomousAgent:
                         f"{verification_failures} of {self.max_file_verification_retries}."
                     )
                     interaction = self.client.continue_interaction(
-                        interaction.id,
-                        [{"type": "text", "text": feedback}],
+                        interaction.id, [{"type": "text", "text": feedback}]
                     )
                     continue
 
@@ -113,9 +111,7 @@ class AutonomousAgent:
                 for action in actions:
                     signature = json.dumps(
                         {"name": action.name, "arguments": action.arguments},
-                        sort_keys=True,
-                        separators=(",", ":"),
-                        default=str,
+                        sort_keys=True, separators=(",", ":"), default=str,
                     )
                     current_signatures.add(signature)
                     if signature in previous_turn_signatures and screen_hash == previous_turn_screen_hash:
@@ -127,7 +123,6 @@ class AutonomousAgent:
 
                     if self.stop_event.is_set():
                         return AgentRunResult("stopped", turn - 1, "Stopped by the user.")
-
                     decision = self.policy.check_action(action.name, action.arguments)
                     if not decision.allowed:
                         status = (
@@ -143,8 +138,7 @@ class AutonomousAgent:
                         return AgentRunResult("stopped", turn, "Stopped by the user.")
                     if execution.result.get("error"):
                         return AgentRunResult(
-                            "action_error",
-                            turn,
+                            "action_error", turn,
                             f"Action {action.name!r} failed; stopped to avoid continuing "
                             f"from an unknown screen state: {execution.result['error']}",
                         )
@@ -159,8 +153,7 @@ class AutonomousAgent:
                     return AgentRunResult("stopped", turn, "Stopped by the user.")
                 os_context = collect_os_context()
                 interaction = self.client.continue_interaction(
-                    interaction.id,
-                    function_results(executions, screenshot, os_context),
+                    interaction.id, function_results(executions, screenshot, os_context)
                 )
 
             return AgentRunResult("turn_limit", self.max_turns, "Maximum autonomous turn count reached.")
