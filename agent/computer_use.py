@@ -120,6 +120,25 @@ class WindowsComputerExecutor:
         self.stop_event = stop_event
         self.width, self.height = self.pyautogui.size()
         self.pyautogui.FAILSAFE = True
+        self._held_keys: set[str] = set()
+        self._held_mouse_buttons: set[str] = set()
+
+    def _release_held_inputs(self) -> None:
+        """Best-effort release of keys/buttons Ruby explicitly held down."""
+        for button in tuple(self._held_mouse_buttons):
+            try:
+                self.pyautogui.mouseUp(button=button)
+            except Exception:
+                pass
+            finally:
+                self._held_mouse_buttons.discard(button)
+        for key in tuple(self._held_keys):
+            try:
+                self.pyautogui.keyUp(key)
+            except Exception:
+                pass
+            finally:
+                self._held_keys.discard(key)
 
     def _stopped(self) -> bool:
         return self.stop_event is not None and self.stop_event.is_set()
@@ -147,6 +166,7 @@ class WindowsComputerExecutor:
     def execute(self, action: AgentAction) -> ActionExecution:
         name, args = action.name, action.arguments
         if self._stopped():
+            self._release_held_inputs()
             return ActionExecution(name, action.call_id, {"error": "Stopped by user"})
         try:
             if name in {"click", "click_at"}:
@@ -163,7 +183,12 @@ class WindowsComputerExecutor:
                 self.pyautogui.moveTo(*self._xy(args))
             elif name in {"mouse_down", "mouse_up"}:
                 self.pyautogui.moveTo(*self._xy(args))
-                getattr(self.pyautogui, name)(button=args.get("button", "left"))
+                button = str(args.get("button", "left"))
+                getattr(self.pyautogui, name)(button=button)
+                if name == "mouse_down":
+                    self._held_mouse_buttons.add(button)
+                else:
+                    self._held_mouse_buttons.discard(button)
             elif name in {"type", "type_text_at"}:
                 if "x" in args and "y" in args:
                     self.pyautogui.click(*self._xy(args))
@@ -176,9 +201,13 @@ class WindowsComputerExecutor:
             elif name == "press_key":
                 self.pyautogui.press(str(args["key"]))
             elif name == "key_down":
-                self.pyautogui.keyDown(str(args["key"]))
+                key = str(args["key"])
+                self.pyautogui.keyDown(key)
+                self._held_keys.add(key)
             elif name == "key_up":
-                self.pyautogui.keyUp(str(args["key"]))
+                key = str(args["key"])
+                self.pyautogui.keyUp(key)
+                self._held_keys.discard(key)
             elif name == "hotkey":
                 keys = args.get("keys", [])
                 if isinstance(keys, str):
@@ -214,6 +243,12 @@ class WindowsComputerExecutor:
             return ActionExecution(name, action.call_id, {"ok": True})
         except Exception as exc:
             return ActionExecution(name, action.call_id, {"error": str(exc)[:300]})
+        finally:
+            # The hotkey listener can set stop_event while a blocking desktop call
+            # is in progress. Once control returns, release any explicitly held
+            # inputs before the loop exits or reports the action result.
+            if self._stopped():
+                self._release_held_inputs()
 
 
 def function_results(
