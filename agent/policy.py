@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -22,8 +23,25 @@ BLOCKED_INTENT_TERMS = (
 class AutonomousPolicy:
     """Allow routine UI automation but stop before consequential actions."""
 
-    def check_action(self, name: str, arguments: dict) -> PolicyDecision:
-        intent = str(arguments.get("intent", "")).lower()
+    def check_action(self, name: str, arguments: dict[str, Any]) -> PolicyDecision:
+        if not isinstance(arguments, dict):
+            return PolicyDecision(False, "Blocked: action arguments must be an object.")
+
+        safety = arguments.get("safety_decision")
+        if safety is not None:
+            if not isinstance(safety, dict):
+                return PolicyDecision(False, "Blocked: malformed Computer Use safety decision.")
+            decision = str(safety.get("decision", "")).strip().lower()
+            if decision == "require_confirmation":
+                return PolicyDecision(False, str(safety.get("explanation") or "Computer Use requires user confirmation."))
+            if decision == "blocked":
+                return PolicyDecision(False, str(safety.get("explanation") or "Computer Use safety system blocked this action."))
+            if decision and decision not in {"allow", "allowed", "regular"}:
+                return PolicyDecision(False, f"Blocked: unrecognized Computer Use safety decision {decision!r}.")
+            if not decision:
+                return PolicyDecision(False, "Blocked: Computer Use safety decision has no decision value.")
+
+        intent = str(arguments.get("intent", "")).casefold()
         text = f"{name} {intent}"
         for term in BLOCKED_INTENT_TERMS:
             if term in text:
@@ -35,8 +53,9 @@ class AutonomousPolicy:
             "You are Ruby running in autonomous desktop mode. Continue the user's stated task "
             "without repeatedly asking for routine confirmation. You may click, type, scroll, "
             "wait, and use ordinary UI controls needed to complete the task. Treat routine "
-            "in-app permission prompts as part of the requested workflow when they are clearly "
-            "required to continue. Never accept Terms of Service, privacy/cookie consent, CAPTCHAs, "
+            "in-app permission prompts as part of the requested workflow only when clearly "
+            "required to continue and not involving security, privacy, legal consent, account access, "
+            "or consequential changes. Never accept Terms of Service, privacy/cookie consent, CAPTCHAs, "
             "payments, purchases, money transfers, account creation/login, OTP/2FA, password entry, "
             "sending messages/emails, publishing, or destructive file/system changes. If the screen "
             "requires one of those, stop and yield control instead of guessing. If you are unsure, stop."
