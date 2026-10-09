@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from agent.autonomous_loop import AutonomousAgent
-from agent.computer_use import ActionExecution, extract_actions
+from agent.computer_use import ActionExecution, AgentAction, WindowsComputerExecutor, extract_actions
 from agent.policy import AutonomousPolicy
 
 
@@ -149,6 +149,35 @@ class AutonomousAgentTests(unittest.TestCase):
         self.assertEqual(result.status, "completed")
         collect_context_mock.assert_called_with([expected_path])
         self.assertEqual(client.os_contexts[0]["filesystem_status"][expected_path]["exists"], False)
+
+
+    def test_executor_releases_held_key_when_stop_arrives_during_typing(self):
+        stop = threading.Event()
+
+        class FakePyAutoGUI:
+            FAILSAFE = False
+
+            def __init__(self):
+                self.released_keys = []
+
+            def size(self):
+                return (1000, 1000)
+
+            def keyDown(self, key):
+                pass
+
+            def keyUp(self, key):
+                self.released_keys.append(key)
+
+            def write(self, text, interval=0):
+                stop.set()
+
+        gui = FakePyAutoGUI()
+        executor = WindowsComputerExecutor(pyautogui_module=gui, stop_event=stop)
+        executor.execute(AgentAction("key_down", {"key": "ctrl"}, "down"))
+        result = executor.execute(AgentAction("type", {"text": "long text"}, "type"))
+        self.assertEqual(result.result.get("error"), "Stopped by user")
+        self.assertIn("ctrl", gui.released_keys)
 
     def test_action_error_stops_loop(self):
         client, executor = FakeClient(), FakeExecutor({"error": "click failed"})
