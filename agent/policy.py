@@ -39,8 +39,8 @@ class AutonomousPolicy:
         if name not in ALLOWED_ACTIONS:
             return PolicyDecision(False, f"Blocked: unsupported Computer Use action {name!r}.")
 
-        safety = arguments.get("safety_decision")
-        if safety is not None:
+        if "safety_decision" in arguments:
+            safety = arguments["safety_decision"]
             if not isinstance(safety, dict):
                 return PolicyDecision(False, "Blocked: malformed Computer Use safety decision.")
             decision = str(safety.get("decision", "")).strip().lower()
