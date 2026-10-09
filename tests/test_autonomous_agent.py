@@ -50,6 +50,10 @@ class FakeExecutor:
         self.actions = []
         self.result = result if result is not None else {"ok": True}
         self.on_execute = on_execute
+        self.cleanup_calls = 0
+
+    def release_held_inputs(self):
+        self.cleanup_calls += 1
 
     def execute(self, action):
         self.actions.append(action)
@@ -119,6 +123,7 @@ class AutonomousAgentTests(unittest.TestCase):
         result = agent.run("Finish the routine desktop task")
         self.assertEqual(result.status, "stopped")
         self.assertEqual(client.calls, 1)
+        self.assertEqual(executor.cleanup_calls, 1)
 
     def test_loop_executes_then_finishes(self):
         client, executor = FakeClient(), FakeExecutor()
