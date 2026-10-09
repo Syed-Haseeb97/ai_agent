@@ -67,6 +67,29 @@ class VerifierTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertTrue(result[0])
 
+
+    def test_background_preexisting_process_does_not_verify_app_launch(self):
+        baseline = {(123, "notepad.exe")}
+        with patch("agent.verifier.get_active_window_title", return_value=""), patch(
+            "agent.verifier.collect_process_identities", return_value=baseline
+        ):
+            result = verify_goal_app_launch("Open Notepad", baseline)
+        self.assertIsNotNone(result)
+        self.assertFalse(result[0])
+        self.assertIn("no new matching process", result[1])
+
+    def test_new_process_can_verify_app_launch(self):
+        baseline = {(123, "notepad.exe")}
+        current = {(123, "notepad.exe"), (456, "notepad.exe")}
+        with patch("agent.verifier.get_active_window_title", return_value=""), patch(
+            "agent.verifier.collect_process_identities", return_value=current
+        ):
+            result = verify_goal_app_launch("Open Notepad", baseline)
+        self.assertEqual(
+            result,
+            (True, "Native verification passed: a new Notepad process was launched."),
+        )
+
     def test_unrelated_goal_is_not_app_launch_verification(self):
         self.assertIsNone(verify_goal_app_launch("Summarize this paragraph"))
 
