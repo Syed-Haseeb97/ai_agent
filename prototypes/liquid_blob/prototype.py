@@ -88,48 +88,6 @@ class LiquidBlob(QWidget):
         if self.mood == Mood.THINKING and self._spin_active and dt > 0.0:
             self._spin_angle = (self._spin_angle + 720.0 * dt) % 360.0
 
-        if self.mood == Mood.THINKING and dt > 0.0:
-            target = self._thinking_waypoints[self._thinking_target]
-            dx = target.x() - self._thinking_pos.x()
-            dy = target.y() - self._thinking_pos.y()
-
-            # Spring force pulls the fluid toward the next waypoint. Damping
-            # dissipates energy, while a small gravity term makes vertical
-            # travel sag and overshoot naturally instead of moving like a cursor.
-            spring_k = 34.0
-            damping = 9.0
-            gravity = 0.48
-            ax = spring_k * dx - damping * self._thinking_vel.x()
-            ay = spring_k * dy - damping * self._thinking_vel.y() + gravity
-
-            self._thinking_vel.setX(self._thinking_vel.x() + ax * dt)
-            self._thinking_vel.setY(self._thinking_vel.y() + ay * dt)
-            self._thinking_pos.setX(self._thinking_pos.x() + self._thinking_vel.x() * dt)
-            self._thinking_pos.setY(self._thinking_pos.y() + self._thinking_vel.y() * dt)
-
-            # Keep the simulated mass inside the imaginary four-sided boundary.
-            limit = 1.05
-            self._thinking_pos.setX(max(-limit, min(limit, self._thinking_pos.x())))
-            self._thinking_pos.setY(max(-limit, min(limit, self._thinking_pos.y())))
-
-            distance = math.hypot(
-                target.x() - self._thinking_pos.x(),
-                target.y() - self._thinking_pos.y(),
-            )
-            speed = math.hypot(self._thinking_vel.x(), self._thinking_vel.y())
-            if distance < 0.095 and speed < 0.72:
-                self._thinking_target = (self._thinking_target + 1) % len(self._thinking_waypoints)
-
-            # Keep a short wake behind the moving mass; it becomes a soft,
-            # fading liquid tail when painted inside the body silhouette.
-            if not self._thinking_history or math.hypot(
-                self._thinking_pos.x() - self._thinking_history[-1].x(),
-                self._thinking_pos.y() - self._thinking_history[-1].y(),
-            ) > 0.025:
-                self._thinking_history.append(QPointF(
-                    self._thinking_pos.x(), self._thinking_pos.y()
-                ))
-                self._thinking_history = self._thinking_history[-12:]
 
         self.update()
 
@@ -179,9 +137,9 @@ class LiquidBlob(QWidget):
         elif mood == Mood.LISTENING:
             energy = 0.038
         elif mood == Mood.THINKING:
-            # The silhouette itself behaves like a fluid surface, not a solid
-            # orb containing a separate moving particle.
-            energy = 0.085
+            # Keep the silhouette steady so the 3D yaw, not fluid wobble,
+            # reads as Ruby turning in place.
+            energy = 0.012
         elif mood == Mood.SAD:
             energy = 0.018
         elif mood == Mood.ERROR:
@@ -195,24 +153,6 @@ class LiquidBlob(QWidget):
             wave_c = math.cos(5 * angle + t * 0.7) * energy * 0.22
             deform = 1.0 + wave_a + wave_b + wave_c + breathe
             flow_x = flow_y = 0.0
-            if mood == Mood.THINKING:
-                # Ruby is a deformable fluid silhouette, not a circle being translated.
-                # Stretch along the dominant travel axis and softly compress the
-                # perpendicular axis, roughly preserving volume.
-                vx = self._thinking_vel.x()
-                vy = self._thinking_vel.y()
-                speed = min(1.0, math.hypot(vx, vy) / 2.7)
-                if speed > 0.001:
-                    flow_angle = math.atan2(vy, vx)
-                    alignment = math.cos(angle - flow_angle)
-                    # Pull the leading surface forward; the back edge lags behind.
-                    deform += 0.19 * speed * alignment
-                    # Uneven waves travel across the surface instead of a uniform squash.
-                    deform += math.sin(angle * 3.0 - t * 3.4 + flow_angle) * 0.045 * speed
-                    deform += math.sin(angle * 6.0 + t * 2.2 - flow_angle) * 0.022 * speed
-                    # Make the shape distinctly longer horizontally or vertically.
-                    flow_x = abs(vx) / max(abs(vx) + abs(vy), 1e-6)
-                    flow_y = abs(vy) / max(abs(vx) + abs(vy), 1e-6)
             if mood == Mood.SAD:
                 # A subtly heavier lower half gives the body a drooping silhouette.
                 deform += max(0.0, math.sin(angle)) * 0.035
@@ -223,21 +163,6 @@ class LiquidBlob(QWidget):
             r = radius * deform
             x_scale = 1.0
             y_scale = 1.0
-            if mood == Mood.THINKING:
-                # Axis-specific stretch is strongest while moving, then relaxes
-                # gradually as momentum fades; the counter-squash keeps Ruby blobby.
-                x_scale += 0.38 * flow_x * min(1.0, math.hypot(
-                    self._thinking_vel.x(), self._thinking_vel.y()
-                ) / 2.7)
-                y_scale += 0.38 * flow_y * min(1.0, math.hypot(
-                    self._thinking_vel.x(), self._thinking_vel.y()
-                ) / 2.7)
-                x_scale -= 0.12 * flow_y * min(1.0, math.hypot(
-                    self._thinking_vel.x(), self._thinking_vel.y()
-                ) / 2.7)
-                y_scale -= 0.12 * flow_x * min(1.0, math.hypot(
-                    self._thinking_vel.x(), self._thinking_vel.y()
-                ) / 2.7)
             x = cx + math.cos(angle) * r * x_scale
             y = cy + math.sin(angle) * r * y_scale * (1.0 + (0.045 if mood == Mood.SAD else 0.0))
             points.append(QPointF(x, y))
@@ -275,13 +200,16 @@ class LiquidBlob(QWidget):
         elif self.mood == Mood.ERROR:
             cx += math.sin(t * 12.0) * 2.0
 
+        thinking_front_facing = True
         if self.mood == Mood.THINKING:
-            # Fake a 3D turn around the vertical axis: the character narrows
-            # horizontally as it turns edge-on, rather than rotating like a wheel.
+            # Yaw around the vertical axis: the orb narrows edge-on, then its
+            # back faces us for half a turn. Keep its center fixed.
             painter.save()
             painter.translate(cx, cy)
             yaw = math.radians(self._spin_angle)
-            horizontal_scale = max(0.035, abs(math.cos(yaw)))
+            facing = math.cos(yaw)
+            horizontal_scale = max(0.045, abs(facing))
+            thinking_front_facing = facing > 0.0
             painter.scale(horizontal_scale, 1.0)
             painter.translate(-cx, -cy)
 
@@ -375,7 +303,8 @@ class LiquidBlob(QWidget):
 
 
         face_radius = core_radius * 0.88 if has_black_core else radius
-        self._draw_face(painter, cx, cy, face_radius, t)
+        if self.mood != Mood.THINKING or thinking_front_facing:
+            self._draw_face(painter, cx, cy, face_radius, t)
 
         # No isolated specular dot: the broad animated gradient supplies the sheen.
         if self.mood == Mood.THINKING:
