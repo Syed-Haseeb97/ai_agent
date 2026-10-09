@@ -86,8 +86,9 @@ class LiquidBlob(QWidget):
         self._last_tick = now
 
         if self.mood == Mood.THINKING and self._spin_active and dt > 0.0:
-            # Faster yaw makes the body rotation clearly visible at ~30 FPS.
-            self._spin_angle = (self._spin_angle + 1080.0 * dt) % 360.0
+            # A readable, continuous yaw: fast enough to see the whole body turn,
+            # but slow enough for the front/back transition to register.
+            self._spin_angle = (self._spin_angle + 300.0 * dt) % 360.0
 
 
         self.update()
@@ -209,11 +210,12 @@ class LiquidBlob(QWidget):
             painter.translate(cx, cy)
             yaw = math.radians(self._spin_angle)
             facing = math.cos(yaw)
-            # Strong perspective squash at the side-on angle, then widen again.
-            # This is intentionally exaggerated so the *body* visibly rotates,
-            # rather than the motion reading as only the eyes drifting.
-            horizontal_scale = max(0.035, abs(facing) ** 1.35)
-            thinking_front_facing = facing > 0.12
+            # Perspective squash is the main visual cue for a vertical-axis turn.
+            # Add a slight side-surface shift so the body reads as a rotating orb,
+            # not as eyes sliding over a stationary circle.
+            horizontal_scale = max(0.025, abs(facing) ** 1.55)
+            painter.translate(math.sin(yaw) * radius * 0.045, 0)
+            thinking_front_facing = facing > 0.08
             painter.scale(horizontal_scale, 1.0)
             painter.translate(-cx, -cy)
 
@@ -561,9 +563,9 @@ class MainWindow(QMainWindow):
             timer.deleteLater()
         self._prompt_timers.clear()
         self.blob.set_mood(mood)
-        # State buttons are only visual previews; only Enter's prompt lifecycle
-        # is allowed to activate the spin.
-        self.blob.set_thinking_spin_active(False)
+        # Thinking should visibly animate when previewed directly, too.
+        # The prompt lifecycle can still pause/resume it at delivery boundaries.
+        self.blob.set_thinking_spin_active(mood == Mood.THINKING)
         descriptions = {
             Mood.IDLE: "IDLE  ·  calm breathing",
             Mood.LISTENING: "LISTENING  ·  calm, attentive breathing",
