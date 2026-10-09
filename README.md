@@ -169,6 +169,18 @@ python -m pip install pyautogui
 
 Install FFmpeg separately and make sure `ffmpeg` and `ffplay` work from a new PowerShell window.
 
+## F16 cleanup preview (non-destructive)
+
+Ruby's cleanup safety foundation currently supports **preview only**. It enumerates and measures candidates inside the configured temporary-directory allowlist; it does not delete files or invoke shell commands.
+
+Run a bounded preview from PowerShell:
+
+```powershell
+python cleanup_dry_run.py --root "$env:TEMP" --max-entries 2000
+```
+
+The command prints JSON with candidate paths, safety dispositions, byte totals, skipped paths, and whether the scan was cancelled or truncated. Press Ctrl+C to request cancellation. If the root is outside the configured temp allowlist, the command refuses to scan it. Treat the output as a review report, not authorization to delete anything.
+
 ## Safety / compatibility notes
 
 - This is a **personal Windows assistant** and some actions directly control the local computer.
