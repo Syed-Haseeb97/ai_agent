@@ -10,7 +10,7 @@ from typing import Any, Callable
 
 from agent.computer_use import ComputerUseClient, WindowsComputerExecutor, extract_actions, extract_text, function_results
 from agent.policy import AutonomousPolicy
-from agent.verifier import collect_os_context, verify_goal_app_launch, verify_goal_file_outputs
+from agent.verifier import collect_os_context, goal_file_paths, verify_goal_app_launch, verify_goal_file_outputs
 from vision.capture import capture_primary_screen
 
 
@@ -70,7 +70,7 @@ class AutonomousAgent:
             screenshot, _ = self.capture()
             if self.stop_event.is_set():
                 return AgentRunResult("stopped", 0, "Stopped by the user.")
-            os_context = collect_os_context()
+            os_context = collect_os_context(goal_file_paths(goal))
             interaction = self.client.start(goal, screenshot, self.policy, os_context)
 
             for turn in range(1, self.max_turns + 1):
@@ -151,7 +151,7 @@ class AutonomousAgent:
                 screenshot, _ = self.capture()
                 if self.stop_event.is_set():
                     return AgentRunResult("stopped", turn, "Stopped by the user.")
-                os_context = collect_os_context()
+                os_context = collect_os_context(goal_file_paths(goal))
                 interaction = self.client.continue_interaction(
                     interaction.id, function_results(executions, screenshot, os_context)
                 )
