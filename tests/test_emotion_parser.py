@@ -34,9 +34,30 @@ class EmotionParserTests(unittest.TestCase):
         self.assertEqual(normalize_emotion("joyful"), "happy")
         self.assertEqual(normalize_emotion("interested"), "curious")
         self.assertEqual(normalize_emotion("not-a-real-emotion"), "neutral")
+        self.assertEqual(normalize_emotion(None), "neutral")
         self.assertEqual(set(EMOTIONS), {
             "neutral", "happy", "excited", "sad", "empathetic", "curious", "surprised"
         })
+
+    def test_preamble_around_json_is_supported(self):
+        answer, emotion = parse_emotion_response(
+            'Here is the result:\\n{"response": "Take your time.", "emotion": "empathetic"}\\nDone.'
+        )
+        self.assertEqual(answer, "Take your time.")
+        self.assertEqual(emotion, "empathetic")
+
+    def test_missing_or_empty_answer_falls_back_without_crashing(self):
+        for raw in ('{"emotion": "happy"}', '{"response": "  ", "emotion": "happy"}'):
+            with self.subTest(raw=raw):
+                answer, emotion = parse_emotion_response(raw)
+                self.assertEqual(answer, raw)
+                self.assertEqual(emotion, "neutral")
+
+    def test_malformed_json_is_kept_as_plain_text(self):
+        raw = '{"response": "broken", "emotion": '
+        answer, emotion = parse_emotion_response(raw)
+        self.assertEqual(answer, raw)
+        self.assertEqual(emotion, "neutral")
 
 
 if __name__ == "__main__":
