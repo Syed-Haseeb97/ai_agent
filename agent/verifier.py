@@ -9,6 +9,23 @@ from typing import Any
 import psutil
 
 
+def collect_process_identities() -> set[tuple[int, str]]:
+    """Return current (PID, executable name) pairs for launch-baseline comparisons."""
+    identities: set[tuple[int, str]] = set()
+    try:
+        for process in psutil.process_iter(["pid", "name", "exe"]):
+            try:
+                name = process.info.get("name") or Path(process.info.get("exe") or "").name
+                pid = process.info.get("pid")
+                if name and pid is not None:
+                    identities.add((int(pid), Path(name).name.casefold()))
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, TypeError, ValueError):
+                continue
+    except (psutil.Error, OSError):
+        pass
+    return identities
+
+
 def verify_process(process_name: str) -> bool:
     """Return whether a process with this executable name is currently running."""
     wanted = Path(process_name.strip().strip('"')).name.casefold()
@@ -98,8 +115,15 @@ def collect_os_context(filesystem_paths: list[str | Path] | None = None) -> dict
     }
 
 
-def verify_goal_app_launch(goal: str) -> tuple[bool, str] | None:
-    """Verify common, explicitly requested app launches; return None for other goals."""
+def verify_goal_app_launch(
+    goal: str,
+    processes_before: set[tuple[int, str]] | None = None,
+) -> tuple[bool, str] | None:
+    """Verify a foreground app window or a process newly launched for this task.
+
+    A pre-existing background process alone is not proof that the requested app
+    was opened. Callers may supply the pre-task (PID, name) snapshot.
+    """
     if not re.search(r"\b(open|launch|start|show|bring up)\b", goal, re.I):
         return None
     lowered = goal.casefold()
@@ -114,9 +138,17 @@ def verify_goal_app_launch(goal: str) -> tuple[bool, str] | None:
     for label, (processes, title_hint) in apps.items():
         if re.search(rf"\b{re.escape(label)}\b", lowered):
             title = get_active_window_title()
-            if any(verify_process(name) for name in processes) or title_hint in title.casefold():
-                return True, f"Native verification passed: {label.title()} is running or its window is active."
-            return False, f"Native verification failed: could not confirm {label.title()} is running or visible."
+            if title_hint in title.casefold():
+                return True, f"Native verification passed: {label.title()} window is foregrounded."
+            current = collect_process_identities()
+            baseline = processes_before or set()
+            target_names = {name.casefold() for name in processes}
+            if any(name in target_names and (pid, name) not in baseline for pid, name in current):
+                return True, f"Native verification passed: a new {label.title()} process was launched."
+            return False, (
+                f"Native verification failed: {label.title()} is not foregrounded and no new "
+                "matching process was detected for this task."
+            )
     return None
 
 
