@@ -24,7 +24,9 @@ class CleanupCliTests(unittest.TestCase):
             self.assertTrue(target.exists())
 
     def test_cli_rejects_non_allowlisted_root(self):
-        with tempfile.TemporaryDirectory() as temp:
+        # Put this temporary folder outside the OS temp root so the allowlist
+        # must reject it instead of accidentally approving a child of /tmp.
+        with tempfile.TemporaryDirectory(dir=Path.home()) as temp:
             root = Path(temp) / "custom-root"
             root.mkdir()
             output = io.StringIO()
