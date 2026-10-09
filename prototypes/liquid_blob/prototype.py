@@ -37,8 +37,8 @@ MOOD_COLORS = {
     Mood.THINKING: (QColor("#a78bfa"), QColor("#4f46e5")),
     Mood.SPEAKING: (QColor("#60a5fa"), QColor("#7c3aed")),
     Mood.HAPPY: (QColor("#c084fc"), QColor("#3b82f6")),
-    Mood.SAD: (QColor("#60a5fa"), QColor("#334155")),
-    Mood.ERROR: (QColor("#fb7185"), QColor("#991b1b")),
+    Mood.SAD: (QColor("#60a5fa"), QColor("#60a5fa")),
+    Mood.ERROR: (QColor("#fb7185"), QColor("#e11d48")),
 }
 
 
@@ -172,13 +172,29 @@ class LiquidBlob(QWidget):
         core_radius = radius * 0.63
 
         body = self._body_path(cx, cy, radius, t)
-        # Rich cool gradient gives the flat shape a glossy, rounded 3D feel.
-        gradient = QRadialGradient(QPointF(cx - radius * 0.32, cy - radius * 0.42), radius * 1.75)
-        gradient.setColorAt(0.0, QColor("#a5c8ff"))
-        gradient.setColorAt(0.18, QColor("#587ff5"))
-        gradient.setColorAt(0.48, primary)
-        gradient.setColorAt(0.78, secondary)
-        gradient.setColorAt(1.0, QColor("#11142f"))
+        # A broad, moving highlight gives the body a living, liquid sheen.
+        # Its centre travels around the body rather than leaving a fixed top-left spot.
+        highlight_x = cx + math.cos(t * 0.72) * radius * 0.24
+        highlight_y = cy + math.sin(t * 0.58) * radius * 0.22
+        gradient = QRadialGradient(QPointF(highlight_x, highlight_y), radius * 1.38)
+        if self.mood == Mood.SAD:
+            # Keep the sad fluid clean blue; no charcoal/navy shading in its body.
+            gradient.setColorAt(0.0, QColor("#b9ddff"))
+            gradient.setColorAt(0.22, QColor("#80bdff"))
+            gradient.setColorAt(0.58, QColor("#60a5fa"))
+            gradient.setColorAt(1.0, QColor("#60a5fa"))
+        elif self.mood == Mood.ERROR:
+            # Error stays entirely in a warm red/pink palette, never blue.
+            gradient.setColorAt(0.0, QColor("#fecdd3"))
+            gradient.setColorAt(0.22, QColor("#fb7185"))
+            gradient.setColorAt(0.58, QColor("#f43f5e"))
+            gradient.setColorAt(1.0, QColor("#e11d48"))
+        else:
+            gradient.setColorAt(0.0, primary.lighter(175))
+            gradient.setColorAt(0.22, primary.lighter(135))
+            gradient.setColorAt(0.52, primary)
+            gradient.setColorAt(0.82, secondary)
+            gradient.setColorAt(1.0, secondary)
         painter.setPen(QPen(QColor(primary.red(), primary.green(), primary.blue(), 185), 1.4))
         painter.setBrush(QBrush(gradient))
         painter.drawPath(body)
@@ -215,9 +231,7 @@ class LiquidBlob(QWidget):
         face_radius = core_radius * 0.88 if has_black_core else radius
         self._draw_face(painter, cx, cy, face_radius, t)
 
-        # A tiny specular glint reinforces the glassy material.
-        painter.setBrush(QColor(255, 255, 255, 190))
-        painter.drawEllipse(QRectF(cx - radius * 0.53, cy - radius * 0.67, 4.0, 4.0))
+        # No isolated specular dot: the broad animated gradient supplies the sheen.
         painter.end()
 
     def _draw_face(self, painter: QPainter, cx: float, cy: float, r: float, t: float) -> None:
@@ -392,7 +406,7 @@ class MainWindow(QMainWindow):
         self.blob.set_mood(mood)
         descriptions = {
             Mood.IDLE: "IDLE  ·  calm breathing",
-            Mood.LISTENING: "LISTENING  ·  curious raised brow and lean-in",
+            Mood.LISTENING: "LISTENING  ·  calm, attentive breathing",
             Mood.THINKING: "THINKING  ·  shifting gaze and focused eyes",
             Mood.SPEAKING: "SPEAKING  ·  rhythmic mouth and body pulse",
             Mood.HAPPY: "HAPPY  ·  bright eyes and buoyant movement",
