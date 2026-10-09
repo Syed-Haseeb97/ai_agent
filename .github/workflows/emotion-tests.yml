@@ -23,6 +23,9 @@ on:
       - "ui/floating_button.py"
       - "tests/test_emotion_parser.py"
       - "tests/test_liquid_blob_moods.py"
+      - "voice/listener.py"
+      - "voice/tts.py"
+      - "tests/test_tts_generation.py"
       - ".github/workflows/emotion-tests.yml"
 
 jobs:
