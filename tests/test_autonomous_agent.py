@@ -145,7 +145,7 @@ class AutonomousAgentTests(unittest.TestCase):
                 client=client, executor=executor,
                 capture=lambda: (b"screen", (100, 100)), max_turns=3,
             )
-            result = agent.run("Open Notepad and save ruby_test.txt in Documents")
+            result = agent.run("Complete the routine desktop task")
         self.assertEqual(result.status, "completed")
         self.assertEqual(client.os_contexts[0]["filesystem_status"][expected_path]["exists"], False)
 
