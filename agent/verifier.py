@@ -141,9 +141,11 @@ def verify_goal_app_launch(
             if title_hint in title.casefold():
                 return True, f"Native verification passed: {label.title()} window is foregrounded."
             current = collect_process_identities()
-            baseline = processes_before or set()
+            baseline = processes_before
             target_names = {name.casefold() for name in processes}
-            if any(name in target_names and (pid, name) not in baseline for pid, name in current):
+            if baseline is not None and any(
+                name in target_names and (pid, name) not in baseline for pid, name in current
+            ):
                 return True, f"Native verification passed: a new {label.title()} process was launched."
             return False, (
                 f"Native verification failed: {label.title()} is not foregrounded and no new "
