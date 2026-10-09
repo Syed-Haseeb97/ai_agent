@@ -55,7 +55,7 @@ class LiquidBlob(QWidget):
         self._timer.start(33)  # ~30 FPS is enough for a desktop companion.
 
     def _tick(self) -> None:
-        """Advance the Thinking fluid with a damped spring-mass simulation."""
+        """Advance the orb animation and Thinking rotation."""
         now = time.monotonic()
         dt = min(0.05, max(0.0, now - self._last_tick))
         self._last_tick = now
@@ -79,15 +79,8 @@ class LiquidBlob(QWidget):
     def set_mood(self, mood: Mood) -> None:
         if self.mood != mood:
             self.mood = mood
-            # A mood selection alone must not leave Ruby spinning forever.
-            # Prompt lifecycle events explicitly enable/disable the spin.
+            # The production state synchronizer explicitly enables Thinking spin.
             self._spin_active = False
-            if mood == Mood.THINKING:
-                self._thinking_pos = QPointF(-0.82, 0.0)
-                self._thinking_vel = QPointF(0.0, 0.0)
-                self._thinking_target = 1
-                self._thinking_history = []
-                self._last_tick = time.monotonic()
             self.update()
 
     def enterEvent(self, event) -> None:
