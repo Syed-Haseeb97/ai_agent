@@ -24,8 +24,9 @@ class FakeInteraction:
 class FakeClient:
     def __init__(self):
         self.calls = 0
+        self.inputs = []
 
-    def start(self, goal, screenshot, policy):
+    def start(self, goal, screenshot, policy, os_context=None):
         self.calls += 1
         return FakeInteraction([
             FakeStep("function_call", "click", {
@@ -35,6 +36,7 @@ class FakeClient:
 
     def continue_interaction(self, interaction_id, function_results):
         self.calls += 1
+        self.inputs.append(function_results)
         return FakeInteraction([
             FakeStep("model_output", content=[{"type": "text", "text": "done"}])
         ], "i2")
@@ -62,18 +64,14 @@ class AutonomousAgentTests(unittest.TestCase):
         self.assertEqual(action.arguments["x"], 1)
 
     def test_policy_allows_routine_action(self):
-        self.assertTrue(AutonomousPolicy().check_action(
-            "click", {"intent": "Click routine UI control"}
-        ).allowed)
+        self.assertTrue(AutonomousPolicy().check_action("click", {"intent": "Click routine UI control"}).allowed)
 
     def test_policy_blocks_consequential_intent(self):
         decision = AutonomousPolicy().check_action("click", {"intent": "Click Purchase"})
         self.assertFalse(decision.allowed)
 
     def test_policy_blocks_confirmation_decision(self):
-        decision = AutonomousPolicy().check_action(
-            "click", {"safety_decision": {"decision": "require_confirmation"}}
-        )
+        decision = AutonomousPolicy().check_action("click", {"safety_decision": {"decision": "require_confirmation"}})
         self.assertFalse(decision.allowed)
 
     def test_policy_fails_closed_on_malformed_safety_decision(self):
@@ -91,16 +89,16 @@ class AutonomousAgentTests(unittest.TestCase):
             AutonomousAgent(client=FakeClient(), executor=FakeExecutor(), max_turns=0)
         with self.assertRaises(ValueError):
             AutonomousAgent(client=FakeClient(), executor=FakeExecutor(), max_runtime_seconds=0)
+        with self.assertRaises(ValueError):
+            AutonomousAgent(client=FakeClient(), executor=FakeExecutor(), max_file_verification_retries=-1)
 
     def test_stop_event_halts_before_capture_or_api(self):
         stop = threading.Event()
         stop.set()
         client, executor = FakeClient(), FakeExecutor()
         agent = AutonomousAgent(
-            client=client,
-            executor=executor,
-            capture=lambda: self.fail("capture should not run"),
-            stop_event=stop,
+            client=client, executor=executor,
+            capture=lambda: self.fail("capture should not run"), stop_event=stop,
         )
         result = agent.run("anything")
         self.assertEqual(result.status, "stopped")
@@ -112,10 +110,8 @@ class AutonomousAgentTests(unittest.TestCase):
         client = FakeClient()
         executor = FakeExecutor(on_execute=stop.set)
         agent = AutonomousAgent(
-            client=client,
-            executor=executor,
-            capture=lambda: (b"screen", (100, 100)),
-            stop_event=stop,
+            client=client, executor=executor,
+            capture=lambda: (b"screen", (100, 100)), stop_event=stop,
         )
         result = agent.run("Finish the routine desktop task")
         self.assertEqual(result.status, "stopped")
@@ -131,6 +127,7 @@ class AutonomousAgentTests(unittest.TestCase):
         self.assertEqual(result.status, "completed")
         self.assertEqual(len(executor.actions), 1)
         self.assertEqual(client.calls, 2)
+        self.assertIn("Native OS context", str(client.inputs[0]))
 
     def test_action_error_stops_loop(self):
         client, executor = FakeClient(), FakeExecutor({"error": "click failed"})
