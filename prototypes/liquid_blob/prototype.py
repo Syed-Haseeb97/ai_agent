@@ -308,11 +308,21 @@ class LiquidBlob(QWidget):
             painter.restore()
 
         if mood == Mood.SPEAKING:
-            mouth_w = r * (0.08 + (math.sin(t * 11.0) + 1.0) * 0.025)
-            mouth_h = r * (0.025 + abs(math.sin(t * 11.0)) * 0.065)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(20, 18, 55, 210))
-            painter.drawEllipse(QRectF(cx - mouth_w / 2, cy + r * 0.18, mouth_w, mouth_h))
+            # A readable, softly animated rose-lilac mouth: larger than a dot,
+            # but still restrained, with a dark plum edge against the black core.
+            voice = (math.sin(t * 11.0) + 1.0) / 2.0
+            mouth_w = r * (0.19 + voice * 0.035)
+            mouth_h = r * (0.055 + abs(math.sin(t * 11.0)) * 0.075)
+            mouth_rect = QRectF(cx - mouth_w / 2, cy + r * 0.17, mouth_w, mouth_h)
+            mouth_gradient = QLinearGradient(
+                mouth_rect.left(), mouth_rect.top(), mouth_rect.right(), mouth_rect.bottom()
+            )
+            mouth_gradient.setColorAt(0.0, QColor("#ffb4d0"))
+            mouth_gradient.setColorAt(0.52, QColor("#f472b6"))
+            mouth_gradient.setColorAt(1.0, QColor("#c75aab"))
+            painter.setPen(QPen(QColor("#3a1738"), max(1.0, r * 0.018)))
+            painter.setBrush(QBrush(mouth_gradient))
+            painter.drawEllipse(mouth_rect)
         elif mood == Mood.LISTENING:
             # Original calm listening face; no eyebrow gimmick or orbiting dots.
             pass
