@@ -140,6 +140,10 @@ class WindowsComputerExecutor:
             finally:
                 self._held_keys.discard(key)
 
+    def release_held_inputs(self) -> None:
+        """Public best-effort cleanup hook for an agent-wide cancellation."""
+        self._release_held_inputs()
+
     def _stopped(self) -> bool:
         return self.stop_event is not None and self.stop_event.is_set()
 
