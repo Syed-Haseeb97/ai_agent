@@ -29,6 +29,9 @@ on:
       - "ui/status_popup.py"
       - "tests/test_emotion_parser.py"
       - "tests/test_liquid_blob_moods.py"
+      - "voice/listener.py"
+      - "voice/tts.py"
+      - "tests/test_tts_generation.py"
       - "tests/test_response_popup.py"
       - ".github/workflows/emotion-tests.yml"
 
