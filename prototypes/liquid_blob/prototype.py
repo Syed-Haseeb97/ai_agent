@@ -166,23 +166,10 @@ class LiquidBlob(QWidget):
         painter.setBrush(QBrush(shadow))
         painter.drawEllipse(QRectF(cx - radius, cy - radius * 0.4, radius * 2, radius * 1.6))
 
-        # A stable circular face core is used only for the everyday interaction states.
-        # The living liquid body grows beyond this boundary; emotional/error states
-        # intentionally have no rigid ring.
+        # Everyday states have two distinct layers: a solid, glass-like face orb,
+        # surrounded by the continuously deforming liquid body.
         has_rigid_core = self.mood in (Mood.IDLE, Mood.LISTENING, Mood.SPEAKING)
-        core_radius = radius * 0.79
-        if has_rigid_core:
-            core_gradient = QRadialGradient(
-                QPointF(cx - core_radius * 0.28, cy - core_radius * 0.38),
-                core_radius * 1.55,
-            )
-            core_gradient.setColorAt(0.0, QColor(255, 255, 255, 28))
-            core_gradient.setColorAt(0.55, QColor(primary.red(), primary.green(), primary.blue(), 24))
-            core_gradient.setColorAt(1.0, QColor(8, 12, 35, 45))
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QBrush(core_gradient))
-            painter.drawEllipse(QRectF(cx - core_radius, cy - core_radius,
-                                       core_radius * 2, core_radius * 2))
+        core_radius = radius * 0.63
 
         body = self._body_path(cx, cy, radius, t)
         # Rich cool gradient gives the flat shape a glossy, rounded 3D feel.
@@ -209,18 +196,54 @@ class LiquidBlob(QWidget):
         painter.setBrush(QBrush(shine))
         painter.drawEllipse(QRectF(cx - radius * 0.92, cy - radius * 0.98, radius * 1.2, radius * 0.92))
 
+        # Listening uses orbiting droplets as a clear "hearing" cue—no mouth
+        # waveform. The dots travel around the liquid perimeter at staggered phases.
+        if self.mood == Mood.LISTENING:
+            for i, dot_size in enumerate((5.0, 3.8, 4.5)):
+                angle = -math.pi / 2 + t * 1.35 + i * math.tau / 3
+                orbit = radius * (1.13 + 0.025 * math.sin(t * 2.2 + i))
+                dx = cx + math.cos(angle) * orbit
+                dy = cy + math.sin(angle) * orbit
+                alpha = int(135 + 90 * (0.5 + 0.5 * math.sin(t * 3.0 + i)))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor(175, 248, 255, alpha))
+                painter.drawEllipse(QRectF(dx - dot_size / 2, dy - dot_size / 2,
+                                           dot_size, dot_size))
+
         if has_rigid_core:
-            # Thin, stable face boundary; liquid motion remains visible outside it.
-            ring = QRadialGradient(QPointF(cx, cy), core_radius)
-            ring.setColorAt(0.90, QColor(255, 255, 255, 0))
-            ring.setColorAt(0.965, QColor(230, 242, 255, 82))
-            ring.setColorAt(1.0, QColor(primary.red(), primary.green(), primary.blue(), 20))
-            painter.setBrush(QBrush(ring))
-            painter.setPen(QPen(QColor(235, 245, 255, 65), 1.0))
+            # A genuinely separate inner orb: its own opaque pearl-blue material,
+            # highlight, darker lower rim, and crisp edge. This is drawn OVER the
+            # liquid shell so the two materials remain visibly distinct.
+            orb = QRadialGradient(QPointF(cx - core_radius * 0.32,
+                                          cy - core_radius * 0.42),
+                                  core_radius * 1.55)
+            orb.setColorAt(0.0, QColor("#f0fbff"))
+            orb.setColorAt(0.18, QColor("#b6dcff"))
+            orb.setColorAt(0.48, QColor("#668cf0"))
+            orb.setColorAt(0.78, QColor("#394eb1"))
+            orb.setColorAt(0.96, QColor("#222b68"))
+            orb.setColorAt(1.0, QColor("#171d49"))
+            painter.setPen(QPen(QColor("#d5edff"), 1.8))
+            painter.setBrush(QBrush(orb))
             painter.drawEllipse(QRectF(cx - core_radius, cy - core_radius,
                                        core_radius * 2, core_radius * 2))
 
-        self._draw_face(painter, cx, cy, radius, t)
+            # Crisp inner specular highlight makes the orb read as a separate object.
+            core_shine = QRadialGradient(
+                QPointF(cx - core_radius * 0.38, cy - core_radius * 0.55),
+                core_radius * 0.78,
+            )
+            core_shine.setColorAt(0.0, QColor(255, 255, 255, 115))
+            core_shine.setColorAt(0.45, QColor(225, 244, 255, 34))
+            core_shine.setColorAt(1.0, QColor(255, 255, 255, 0))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(core_shine))
+            painter.drawEllipse(QRectF(cx - core_radius * 0.92,
+                                       cy - core_radius * 0.96,
+                                       core_radius * 1.15, core_radius * 0.78))
+
+        face_radius = core_radius * 0.88 if has_rigid_core else radius
+        self._draw_face(painter, cx, cy, face_radius, t)
 
         # A tiny specular glint reinforces the glassy material.
         painter.setBrush(QColor(255, 255, 255, 190))
@@ -298,21 +321,8 @@ class LiquidBlob(QWidget):
             painter.setBrush(QColor(20, 18, 55, 210))
             painter.drawEllipse(QRectF(cx - mouth_w / 2, cy + r * 0.18, mouth_w, mouth_h))
         elif mood == Mood.LISTENING:
-            # Calm listening cue: a small, soft waveform that rises and falls
-            # smoothly under the eyes, instead of the old awkward dangling bars.
-            pulse = (math.sin(t * 3.4) + 1.0) / 2.0
-            wave_pen = QPen(QColor(220, 250, 255, int(105 + pulse * 105)),
-                            max(1.8, r * 0.014), Qt.PenStyle.SolidLine,
-                            Qt.PenCapStyle.RoundCap)
-            painter.setPen(wave_pen)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            wave = QPainterPath()
-            wave.moveTo(cx - r * 0.18, cy + r * 0.285)
-            wave.quadTo(cx - r * 0.09, cy + r * (0.245 - pulse * 0.045),
-                        cx, cy + r * 0.285)
-            wave.quadTo(cx + r * 0.09, cy + r * (0.325 + pulse * 0.025),
-                        cx + r * 0.18, cy + r * 0.285)
-            painter.drawPath(wave)
+            # Keep the face relaxed while the orbiting droplets around the shell
+            # provide the listening motion cue.
         elif mood == Mood.SAD:
             painter.setPen(QPen(QColor(235, 240, 255, 190), 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             painter.drawArc(QRectF(cx - r * 0.13, cy + r * 0.19, r * 0.26, r * 0.12), 25 * 16, 130 * 16)
