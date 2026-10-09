@@ -333,18 +333,9 @@ class LiquidBlob(QWidget):
 
 
         face_radius = core_radius * 0.88 if has_black_core else radius
-        if self.mood == Mood.THINKING:
-            # The sphere stays round; only the face foreshortens as it turns
-            # toward the edge, then vanishes on the far side.
-            facing = math.cos(math.radians(self._spin_angle))
-            if facing > 0.0:
-                painter.save()
-                painter.translate(cx, cy)
-                painter.scale(max(0.025, facing ** 0.7), 1.0)
-                painter.translate(-cx, -cy)
-                self._draw_face(painter, cx, cy, face_radius, t)
-                painter.restore()
-        else:
+        if self.mood != Mood.THINKING:
+            # Thinking is intentionally faceless: keep the spinning glossy sphere
+            # and all of its shading/motion exactly as-is, with no eyes or mouth.
             self._draw_face(painter, cx, cy, face_radius, t)
 
         # No isolated specular dot: the broad animated gradient supplies the sheen.
