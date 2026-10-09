@@ -87,7 +87,7 @@ def classify_cleanup_target(
 
         # Hard-block sensitive locations before considering any allowlist. This
         # remains a block even if a caller accidentally configures an unsafe root.
-        lowered = str(candidate_abs).replace("/", "\\\\").casefold()
+        candidate_abs = Path(os.path.abspath(candidate))
         blocked_components = {
             "system32", "syswow64", "program files", "program files (x86)",
             "desktop", "documents", "pictures", "videos", "music", "downloads",
