@@ -46,17 +46,13 @@ class ComputerUseClient:
 
     @staticmethod
     def _tool() -> dict[str, Any]:
-        return {
-            "type": "computer_use",
-            "environment": "desktop",
-            "enable_prompt_injection_detection": True,
-        }
+        return {"type": "computer_use", "environment": "desktop", "enable_prompt_injection_detection": True}
 
-    def start(self, goal: str, screenshot: bytes, policy: AutonomousPolicy):
+    def start(self, goal: str, screenshot: bytes, policy: AutonomousPolicy, os_context: dict[str, Any] | None = None):
         image = base64.b64encode(screenshot).decode("ascii")
         return self.client.interactions.create(
             model=self.MODEL,
-            system_instruction=policy.system_instruction(),
+            system_instruction=policy.system_instruction(os_context),
             input=[
                 {"type": "text", "text": goal},
                 {"type": "image", "data": image, "mime_type": "image/jpeg"},
@@ -106,9 +102,14 @@ def extract_text(interaction: Any) -> str:
 
 
 class WindowsComputerExecutor:
-    """Execute Gemini desktop actions using PyAutoGUI on the interactive Windows desktop."""
+    """Execute Gemini desktop actions with fail-safe and cooperative stop checks."""
 
-    def __init__(self, pyautogui_module: Any | None = None, sleep: Callable[[float], None] = time.sleep):
+    def __init__(
+        self,
+        pyautogui_module: Any | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        stop_event: Any | None = None,
+    ):
         if pyautogui_module is None:
             try:
                 import pyautogui as pyautogui_module
@@ -116,7 +117,27 @@ class WindowsComputerExecutor:
                 raise RuntimeError("Install pyautogui for autonomous desktop control") from exc
         self.pyautogui = pyautogui_module
         self.sleep = sleep
+        self.stop_event = stop_event
         self.width, self.height = self.pyautogui.size()
+        self.pyautogui.FAILSAFE = True
+
+    def _stopped(self) -> bool:
+        return self.stop_event is not None and self.stop_event.is_set()
+
+    def _interruptible_sleep(self, seconds: float) -> bool:
+        deadline = time.monotonic() + max(0.0, seconds)
+        while time.monotonic() < deadline:
+            if self._stopped():
+                return False
+            self.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+        return not self._stopped()
+
+    def _write_interruptibly(self, text: str) -> bool:
+        for offset in range(0, len(text), 24):
+            if self._stopped():
+                return False
+            self.pyautogui.write(text[offset:offset + 24], interval=0.002)
+        return not self._stopped()
 
     def _xy(self, args: dict[str, Any]) -> tuple[int, int]:
         x = max(0, min(999, int(args["x"])))
@@ -125,6 +146,8 @@ class WindowsComputerExecutor:
 
     def execute(self, action: AgentAction) -> ActionExecution:
         name, args = action.name, action.arguments
+        if self._stopped():
+            return ActionExecution(name, action.call_id, {"error": "Stopped by user"})
         try:
             if name in {"click", "click_at"}:
                 self.pyautogui.click(*self._xy(args))
@@ -144,8 +167,11 @@ class WindowsComputerExecutor:
             elif name in {"type", "type_text_at"}:
                 if "x" in args and "y" in args:
                     self.pyautogui.click(*self._xy(args))
-                self.pyautogui.write(str(args.get("text", "")), interval=0.002)
+                if not self._write_interruptibly(str(args.get("text", ""))):
+                    return ActionExecution(name, action.call_id, {"error": "Stopped by user"})
                 if args.get("press_enter"):
+                    if self._stopped():
+                        return ActionExecution(name, action.call_id, {"error": "Stopped by user"})
                     self.pyautogui.press("enter")
             elif name == "press_key":
                 self.pyautogui.press(str(args["key"]))
@@ -161,17 +187,26 @@ class WindowsComputerExecutor:
             elif name in {"drag_and_drop", "drag"}:
                 start = {"x": args.get("start_x", args.get("x")), "y": args.get("start_y", args.get("y"))}
                 end = {"x": args.get("end_x", args.get("destination_x")), "y": args.get("end_y", args.get("destination_y"))}
-                self.pyautogui.moveTo(*self._xy(start)); self.pyautogui.dragTo(*self._xy(end), duration=0.4, button="left")
+                self.pyautogui.moveTo(*self._xy(start))
+                self.pyautogui.dragTo(*self._xy(end), duration=0.4, button="left")
             elif name == "scroll":
-                x, y = self._xy(args); self.pyautogui.moveTo(x, y)
+                x, y = self._xy(args)
+                self.pyautogui.moveTo(x, y)
                 direction = str(args.get("direction", "down")).lower()
                 amount = max(1, int(args.get("magnitude_in_pixels", 300)) // 40)
                 self.pyautogui.hscroll(amount if direction == "right" else -amount if direction == "left" else 0)
                 self.pyautogui.scroll(amount if direction == "up" else -amount if direction == "down" else 0)
             elif name == "long_press":
-                self.pyautogui.moveTo(*self._xy(args)); self.pyautogui.mouseDown(); self.sleep(float(args.get("seconds", 2))); self.pyautogui.mouseUp()
+                self.pyautogui.moveTo(*self._xy(args))
+                self.pyautogui.mouseDown()
+                try:
+                    if not self._interruptible_sleep(float(args.get("seconds", 2))):
+                        return ActionExecution(name, action.call_id, {"error": "Stopped by user"})
+                finally:
+                    self.pyautogui.mouseUp()
             elif name == "wait":
-                self.sleep(max(0.0, min(30.0, float(args.get("seconds", 1)))))
+                if not self._interruptible_sleep(max(0.0, min(30.0, float(args.get("seconds", 1))))):
+                    return ActionExecution(name, action.call_id, {"error": "Stopped by user"})
             elif name == "take_screenshot":
                 pass
             else:
@@ -181,15 +216,26 @@ class WindowsComputerExecutor:
             return ActionExecution(name, action.call_id, {"error": str(exc)[:300]})
 
 
-def function_results(executions: list[ActionExecution], screenshot: bytes) -> list[dict[str, Any]]:
+def function_results(
+    executions: list[ActionExecution],
+    screenshot: bytes,
+    os_context: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     encoded = base64.b64encode(screenshot).decode("ascii")
+    context_text = ""
+    if os_context:
+        context_text = "\nNative OS context (observational only): " + str({
+            "running_processes": list(os_context.get("running_processes", []))[:30],
+            "active_window_title": str(os_context.get("active_window_title", ""))[:200],
+            "filesystem_status": os_context.get("filesystem_status", {}),
+        })[:3000]
     return [
         {
             "type": "function_result",
             "name": item.name,
             "call_id": item.call_id,
             "result": [
-                {"type": "text", "text": str(item.result)},
+                {"type": "text", "text": str(item.result) + context_text},
                 {"type": "image", "data": encoded, "mime_type": "image/jpeg"},
             ],
         }
