@@ -31,13 +31,17 @@ class AutonomousAgent:
         max_runtime_seconds: int = 4 * 60 * 60,
         stop_event: threading.Event | None = None,
     ):
-        self.client = client or ComputerUseClient()
-        self.executor = executor or WindowsComputerExecutor()
-        self.policy = policy or AutonomousPolicy()
+        if max_turns < 1:
+            raise ValueError("max_turns must be at least 1")
+        if max_runtime_seconds < 1:
+            raise ValueError("max_runtime_seconds must be at least 1 second")
+        self.client = client if client is not None else ComputerUseClient()
+        self.executor = executor if executor is not None else WindowsComputerExecutor()
+        self.policy = policy if policy is not None else AutonomousPolicy()
         self.capture = capture
         self.max_turns = max_turns
         self.max_runtime_seconds = max_runtime_seconds
-        self.stop_event = stop_event or threading.Event()
+        self.stop_event = stop_event if stop_event is not None else threading.Event()
 
     def stop(self) -> None:
         self.stop_event.set()
@@ -46,35 +50,58 @@ class AutonomousAgent:
         goal = goal.strip()
         if not goal:
             return AgentRunResult("invalid", 0, "No autonomous goal was supplied.")
+        if self.stop_event.is_set():
+            return AgentRunResult("stopped", 0, "Stopped by the user.")
+
         started = time.monotonic()
-        screenshot, _ = self.capture()
-        interaction = self.client.start(goal, screenshot, self.policy)
-
-        for turn in range(1, self.max_turns + 1):
+        try:
+            screenshot, _ = self.capture()
             if self.stop_event.is_set():
-                return AgentRunResult("stopped", turn - 1, "Stopped by the user.")
-            if time.monotonic() - started >= self.max_runtime_seconds:
-                return AgentRunResult("timeout", turn - 1, "Maximum autonomous runtime reached.")
+                return AgentRunResult("stopped", 0, "Stopped by the user.")
+            interaction = self.client.start(goal, screenshot, self.policy)
 
-            actions = extract_actions(interaction)
-            if not actions:
-                return AgentRunResult("completed", turn, extract_text(interaction) or "The agent finished without further UI actions.")
+            for turn in range(1, self.max_turns + 1):
+                if self.stop_event.is_set():
+                    return AgentRunResult("stopped", turn - 1, "Stopped by the user.")
+                if time.monotonic() - started >= self.max_runtime_seconds:
+                    return AgentRunResult("timeout", turn - 1, "Maximum autonomous runtime reached.")
 
-            executions = []
-            for action in actions:
-                decision = self.policy.check_action(action.name, action.arguments)
-                safety = action.arguments.get("safety_decision") or {}
-                if not decision.allowed:
-                    return AgentRunResult("blocked", turn, decision.reason)
-                if str(safety.get("decision", "")).lower() == "require_confirmation":
-                    return AgentRunResult("confirmation_required", turn, str(safety.get("explanation", "Gemini requires user confirmation.")))
-                if str(safety.get("decision", "")).lower() == "blocked":
-                    return AgentRunResult("blocked", turn, str(safety.get("explanation", "Gemini blocked the action.")))
-                executions.append(self.executor.execute(action))
+                actions = extract_actions(interaction)
+                if not actions:
+                    return AgentRunResult(
+                        "completed",
+                        turn,
+                        extract_text(interaction) or "The agent finished without further UI actions.",
+                    )
+
+                executions = []
+                for action in actions:
+                    if self.stop_event.is_set():
+                        return AgentRunResult("stopped", turn - 1, "Stopped by the user.")
+
+                    decision = self.policy.check_action(action.name, action.arguments)
+                    if not decision.allowed:
+                        status = "confirmation_required" if "confirmation" in decision.reason.casefold() or "require_confirmation" in decision.reason.casefold() else "blocked"
+                        return AgentRunResult(status, turn, decision.reason)
+
+                    execution = self.executor.execute(action)
+                    executions.append(execution)
+                    if execution.result.get("error"):
+                        return AgentRunResult(
+                            "action_error",
+                            turn,
+                            f"Action {action.name!r} failed; stopped to avoid continuing from an unknown screen state: {execution.result['error']}",
+                        )
+                    if self.stop_event.is_set():
+                        return AgentRunResult("stopped", turn, "Stopped by the user.")
+
+                if time.monotonic() - started >= self.max_runtime_seconds:
+                    return AgentRunResult("timeout", turn, "Maximum autonomous runtime reached.")
+                screenshot, _ = self.capture()
                 if self.stop_event.is_set():
                     return AgentRunResult("stopped", turn, "Stopped by the user.")
+                interaction = self.client.continue_interaction(interaction.id, function_results(executions, screenshot))
 
-            screenshot, _ = self.capture()
-            interaction = self.client.continue_interaction(interaction.id, function_results(executions, screenshot))
-
-        return AgentRunResult("turn_limit", self.max_turns, "Maximum autonomous turn count reached.")
+            return AgentRunResult("turn_limit", self.max_turns, "Maximum autonomous turn count reached.")
+        except Exception as exc:
+            return AgentRunResult("error", 0, f"Autonomous run failed safely: {type(exc).__name__}: {str(exc)[:240]}")
