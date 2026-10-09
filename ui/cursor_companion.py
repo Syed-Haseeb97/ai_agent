@@ -55,10 +55,7 @@ class CursorCompanion(QWidget):
         self._release_timer = QTimer(self)
         self._release_timer.setSingleShot(True)
         self._release_timer.setInterval(self.RELEASE_GRACE_MS)
-        self._park_timer = QTimer(self)
-        self._park_timer.setSingleShot(True)
-        self._park_timer.setInterval(self.RELEASE_GRACE_MS)
-        self._park_timer.timeout.connect(self._park_at_cursor)
+        self._release_timer.timeout.connect(self._park_at_cursor)
         self._parked_pos = self.pos()
 
         self._motion_timer = QTimer(self)
@@ -79,7 +76,6 @@ class CursorCompanion(QWidget):
     def follow_cursor(self, _action=None) -> None:
         """Begin following before an action; cancel any pending return animation."""
         self._release_timer.stop()
-        self._park_timer.stop()
         self._wall_hit_timer.stop()
         self._following = True
         self._return_phase = "following"
@@ -101,7 +97,6 @@ class CursorCompanion(QWidget):
     def return_home(self) -> None:
         """Dash to the right screen edge, get briefly dizzy, then settle at home."""
         self._release_timer.stop()
-        self._park_timer.stop()
         self._wall_hit_timer.stop()
         self._following = False
         self._return_phase = "wall_approach"
@@ -180,6 +175,5 @@ class CursorCompanion(QWidget):
     def closeEvent(self, event) -> None:
         self._motion_timer.stop()
         self._release_timer.stop()
-        self._park_timer.stop()
         self._wall_hit_timer.stop()
         super().closeEvent(event)
