@@ -12,6 +12,7 @@ from actions.windows_actions import WindowsActionExecutor
 from ui.status_popup import StatusPopup
 from ui.liquid_blob import LiquidBlob, Mood
 from ui.response_popup import ResponsePopup
+from ui.drag_gesture import drag_threshold_exceeded
 from voice.listener import VoiceListener
 from voice.tts import TTS
 from vision.capture import capture_primary_screen
@@ -52,6 +53,8 @@ class FloatingButton(QWidget):
         self.blob.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.blob.set_mood(Mood.IDLE)
         self._drag_pos: QPoint | None = None
+        self._press_global_pos: QPoint | None = None
+        self._dragged = False
         self._busy = False
         self._run_id = 0
         self._response_ready: dict[int, threading.Event] = {}
@@ -144,23 +147,53 @@ class FloatingButton(QWidget):
         self.blob.update()
         super().leaveEvent(event)
 
-    def mousePressEvent(self,event):
-        if event.button()==Qt.MouseButton.LeftButton:
-            self._drag_pos=event.globalPosition().toPoint()-self.frameGeometry().topLeft(); event.accept(); return
-        if event.button()==Qt.MouseButton.RightButton:
-            self.show_text_input(); event.accept(); return
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._press_global_pos = event.globalPosition().toPoint()
+            self._dragged = False
+            self._drag_pos = self._press_global_pos - self.frameGeometry().topLeft()
+            event.accept()
+            return
+        if event.button() == Qt.MouseButton.RightButton:
+            self.show_text_input()
+            event.accept()
+            return
         super().mousePressEvent(event)
 
-    def mouseMoveEvent(self,event):
-        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint()-self._drag_pos); event.accept()
+    def mouseMoveEvent(self, event):
+        if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            current_global_pos = event.globalPosition().toPoint()
+            if self._press_global_pos is not None and drag_threshold_exceeded(
+                self._press_global_pos, current_global_pos, QApplication.startDragDistance()
+            ):
+                self._dragged = True
+            self.move(current_global_pos - self._drag_pos)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
 
-    def mouseReleaseEvent(self,event):
-        if event.button()==Qt.MouseButton.LeftButton:
-            if self._drag_pos is not None:
-                delta=event.globalPosition().toPoint()-self.frameGeometry().topLeft()-self._drag_pos
-                if abs(delta.x())<5 and abs(delta.y())<5: self.trigger()
-            self._drag_pos=None; event.accept()
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self._press_global_pos is not None and drag_threshold_exceeded(
+                self._press_global_pos,
+                event.globalPosition().toPoint(),
+                QApplication.startDragDistance(),
+            ):
+                self._dragged = True
+
+            # A release after moving Ruby is a reposition gesture, never a
+            # click-to-listen. Compare global press/release coordinates: using
+            # frameGeometry() here is incorrect because the window has already
+            # moved with the pointer by the time the release arrives.
+            should_trigger = self._press_global_pos is not None and not self._dragged
+            self._drag_pos = None
+            self._press_global_pos = None
+            self._dragged = False
+            if should_trigger:
+                self.trigger()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
     def _set_state(self, state: State):
         """Synchronize the production state machine with Ruby's visual mood."""
