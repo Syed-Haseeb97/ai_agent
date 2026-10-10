@@ -8,8 +8,10 @@ on:
       - "ai/gemini_client.py"
       - "ai/mood_sync.py"
       - "tests/test_mood_sync.py"
+      - "tests/test_drag_gesture.py"
       - "ui/liquid_blob.py"
       - "ui/floating_button.py"
+      - "ui/drag_gesture.py"
       - "ui/response_popup.py"
       - "ui/status_popup.py"
       - "tests/test_emotion_parser.py"
@@ -64,4 +66,4 @@ jobs:
       - name: Run emotion regression tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q tests/test_emotion_parser.py tests/test_liquid_blob_moods.py tests/test_response_popup.py tests/test_status_popup.py
+        run: python -m pytest -q tests/test_emotion_parser.py tests/test_liquid_blob_moods.py tests/test_response_popup.py tests/test_status_popup.py tests/test_drag_gesture.py
