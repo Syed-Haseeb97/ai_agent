@@ -12,6 +12,7 @@ from actions.windows_actions import WindowsActionExecutor
 from ui.status_popup import StatusPopup
 from ui.liquid_blob import LiquidBlob, Mood
 from ui.response_popup import ResponsePopup
+from ui.drag_gesture import drag_threshold_exceeded
 from voice.listener import VoiceListener
 from voice.tts import TTS
 from vision.capture import capture_primary_screen
@@ -52,13 +53,13 @@ class FloatingButton(QWidget):
         self.blob.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.blob.set_mood(Mood.IDLE)
         self._drag_pos: QPoint | None = None
+        self._press_global_pos: QPoint | None = None
+        self._dragged = False
         self._busy = False
         self._run_id = 0
         self._response_ready: dict[int, threading.Event] = {}
         self._continuous_mode = False
         self._response_emotion = "neutral"
-        # Keep the tiny local state snapshot fresh while Ruby is speaking so
-        # the separate cursor overlay can mirror the same expression.
         self._mood_sync_timer = QTimer(self)
         self._mood_sync_timer.setInterval(2000)
         self._mood_sync_timer.timeout.connect(
@@ -72,26 +73,30 @@ class FloatingButton(QWidget):
         self.response_popup = ResponsePopup()
         self.action_executor = WindowsActionExecutor()
 
-        self.stop_listening_button = QPushButton("■  Stop", self)
-        self.stop_listening_button.setFixedSize(62, 24)
-        self.stop_listening_button.move(8, 84)
+        self.stop_listening_button = QPushButton("●  Stop", self)
+        self.stop_listening_button.setFixedSize(68, 25)
+        self.stop_listening_button.move(5, 83)
+        self.stop_listening_button.setToolTip("Stop listening and return Ruby to idle")
+        self.stop_listening_button.setAccessibleName("Stop listening")
         self.stop_listening_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.stop_listening_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.stop_listening_button.setStyleSheet("""
             QPushButton {
-                background: rgba(28, 31, 43, 235);
-                color: rgba(255, 255, 255, 235);
-                border: 1px solid rgba(255, 255, 255, 70);
-                border-radius: 10px;
-                padding: 1px 7px;
+                background: rgba(17, 19, 30, 246);
+                color: #fda4af;
+                border: 1px solid rgba(167, 139, 250, 105);
+                border-radius: 12px;
+                padding: 2px 8px;
                 font: 600 9px 'Segoe UI';
             }
             QPushButton:hover {
-                background: rgba(90, 35, 45, 245);
-                border-color: rgba(255, 110, 125, 180);
+                background: rgba(91, 35, 55, 248);
+                color: #ffe4e6;
+                border-color: rgba(251, 113, 133, 210);
             }
             QPushButton:pressed {
-                background: rgba(120, 35, 48, 255);
+                background: rgba(127, 29, 50, 255);
+                border-color: rgba(251, 113, 133, 235);
             }
         """)
         self.stop_listening_button.hide()
@@ -142,23 +147,53 @@ class FloatingButton(QWidget):
         self.blob.update()
         super().leaveEvent(event)
 
-    def mousePressEvent(self,event):
-        if event.button()==Qt.MouseButton.LeftButton:
-            self._drag_pos=event.globalPosition().toPoint()-self.frameGeometry().topLeft(); event.accept(); return
-        if event.button()==Qt.MouseButton.RightButton:
-            self.show_text_input(); event.accept(); return
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._press_global_pos = event.globalPosition().toPoint()
+            self._dragged = False
+            self._drag_pos = self._press_global_pos - self.frameGeometry().topLeft()
+            event.accept()
+            return
+        if event.button() == Qt.MouseButton.RightButton:
+            self.show_text_input()
+            event.accept()
+            return
         super().mousePressEvent(event)
 
-    def mouseMoveEvent(self,event):
-        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint()-self._drag_pos); event.accept()
+    def mouseMoveEvent(self, event):
+        if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            current_global_pos = event.globalPosition().toPoint()
+            if self._press_global_pos is not None and drag_threshold_exceeded(
+                self._press_global_pos, current_global_pos, QApplication.startDragDistance()
+            ):
+                self._dragged = True
+            self.move(current_global_pos - self._drag_pos)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
 
-    def mouseReleaseEvent(self,event):
-        if event.button()==Qt.MouseButton.LeftButton:
-            if self._drag_pos is not None:
-                delta=event.globalPosition().toPoint()-self.frameGeometry().topLeft()-self._drag_pos
-                if abs(delta.x())<5 and abs(delta.y())<5: self.trigger()
-            self._drag_pos=None; event.accept()
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self._press_global_pos is not None and drag_threshold_exceeded(
+                self._press_global_pos,
+                event.globalPosition().toPoint(),
+                QApplication.startDragDistance(),
+            ):
+                self._dragged = True
+
+            # A release after moving Ruby is a reposition gesture, never a
+            # click-to-listen. Compare global press/release coordinates: using
+            # frameGeometry() here is incorrect because the window has already
+            # moved with the pointer by the time the release arrives.
+            should_trigger = self._press_global_pos is not None and not self._dragged
+            self._drag_pos = None
+            self._press_global_pos = None
+            self._dragged = False
+            if should_trigger:
+                self.trigger()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
     def _set_state(self, state: State):
         """Synchronize the production state machine with Ruby's visual mood."""
@@ -183,8 +218,6 @@ class FloatingButton(QWidget):
         self.blob.set_mood(mood_map[state])
         self.blob.set_speaking_active(state == State.SPEAKING)
         self.blob.set_thinking_spin_active(state == State.THINKING)
-        # Publish only bounded visual state so the cursor companion can mirror
-        # Ruby's expression across processes; no prompt or transcript is shared.
         write_mood_state(state.name.lower(), self._response_emotion)
         self.blob.update()
 
@@ -294,6 +327,7 @@ class FloatingButton(QWidget):
 
     def _on_status(self,run_id,text):
         if not self._is_current(run_id): return
+        self.response_popup.set_status(text or "")
         if text: self.status_popup.show_message(text,self.pos())
         else: self.status_popup.hide_popup()
     def _on_user(self,run_id,text):
@@ -308,6 +342,7 @@ class FloatingButton(QWidget):
         # An error must stop continuous listening; otherwise an empty/failed
         # listen immediately starts another run and oscillates ERROR/LISTENING.
         self._set_continuous_ui(False)
+        self.response_popup.set_status(f"⚠️ {text}")
         self.status_popup.show_message(f"⚠️ {text}",self.pos(),duration_ms=3500)
         self._set_state(State.ERROR)
         QTimer.singleShot(2500, lambda rid=run_id: self._return_idle(rid))
@@ -318,6 +353,7 @@ class FloatingButton(QWidget):
         # Keep the error message visible for its configured duration.
         if self.state != State.ERROR:
             self.status_popup.hide_popup()
+            self.response_popup.set_status("")
             self._set_state(State.IDLE)
         self._busy=False
         if self._continuous_mode:
