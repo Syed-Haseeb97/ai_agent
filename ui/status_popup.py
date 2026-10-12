@@ -139,6 +139,14 @@ class StatusPopup(QWidget):
             self._activity_timer.stop()
             self.activity.setText("!")
 
+        self.reposition(near)
+        self.show()
+        self.raise_()
+        if duration_ms > 0:
+            self._hide_timer.start(duration_ms)
+
+    def reposition(self, near: QPoint):
+        """Move the status capsule with Ruby without restarting its animation/timer."""
         screen = QApplication.screenAt(near) or QApplication.primaryScreen()
         bounds = screen.availableGeometry() if screen else self.geometry()
         margin = 10
@@ -148,10 +156,6 @@ class StatusPopup(QWidget):
         x = min(max(bounds.left() + margin, x), bounds.right() - self.width() - margin)
         y = min(max(bounds.top() + margin, near.y() + 82), bounds.bottom() - self.height() - margin)
         self.move(x, y)
-        self.show()
-        self.raise_()
-        if duration_ms > 0:
-            self._hide_timer.start(duration_ms)
 
     def hide_popup(self):
         self._hide_timer.stop()
