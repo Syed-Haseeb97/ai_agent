@@ -23,6 +23,7 @@ _SUPPORT_PATTERNS = (
     r"\bi feel (?:like a failure|disappointed in myself|hopeless|alone|overwhelmed|stressed|anxious|hurt|sad|down)\b",
     r"\bi(?:'m| am) struggling\b",
     r"\bi need (?:some )?(?:support|comfort|someone to talk to)\b",
+    r"\bi have (?:a )?(?:really )?(?:bad|rough|hard|terrible|awful|tough) day\b",
     r"\bi(?:'ve| have) had (?:a )?(?:really )?(?:bad|rough|hard|terrible|awful|tough) day\b",
     r"\bthings have been (?:really )?(?:hard|rough|difficult) for me\b",
 )
