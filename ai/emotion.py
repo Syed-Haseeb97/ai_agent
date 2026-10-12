@@ -19,7 +19,7 @@ EMOTIONS = frozenset({
 # negative words in unrelated questions do not automatically change the mood.
 _SUPPORT_PATTERNS = (
     r"\bi (?:am|'m|feel|am feeling) (?:having )?(?:a )?(?:really )?(?:bad|rough|hard|terrible|awful|tough) day\b",
-    r"\bi(?:'m| am) (?:feeling )?(?:sad|upset|down|lonely|overwhelmed|stressed|anxious|hurt|heartbroken|exhausted)\b",
+    r"\bi(?:'m| am) (?:feeling )?(?:(?:so|really|very) )?(?:sad|upset|down|lonely|overwhelmed|stressed|anxious|hurt|heartbroken|exhausted)\b",
     r"\bi feel (?:like a failure|disappointed in myself|hopeless|alone|overwhelmed|stressed|anxious|hurt|sad|down)\b",
     r"\bi(?:'m| am) struggling\b",
     r"\bi need (?:some )?(?:support|comfort|someone to talk to)\b",
