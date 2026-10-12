@@ -17,6 +17,7 @@ class EmotionMappingTests(unittest.TestCase):
             "I've had a rough day",
             "I feel disappointed in myself",
             "I'm overwhelmed",
+            "I'm so sad right now",
             "I am struggling",
             "I need someone to talk to",
         )
