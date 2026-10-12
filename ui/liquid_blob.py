@@ -233,7 +233,7 @@ class LiquidBlob(QWidget):
         # Everyday states have two distinct layers: a solid, glass-like face orb,
         # surrounded by the continuously deforming liquid body.
         has_black_core = self.uses_black_core(self.mood)
-        core_radius = radius * 0.63
+        core_radius = radius * 0.72
 
         body = self._body_path(cx, cy, radius, t)
         # A broad, moving highlight gives every mood a living, liquid sheen.
@@ -364,9 +364,9 @@ class LiquidBlob(QWidget):
             gaze_x = math.sin(t * 14.0) * 2.0
 
         eye_y = cy - r * 0.015 + gaze_y
-        eye_dx = r * 0.29
-        eye_w = r * (0.115 if mood == Mood.SURPRISED else 0.105)
-        eye_h = r * (0.29 if mood == Mood.SURPRISED else 0.245)
+        eye_dx = r * 0.31
+        eye_w = r * (0.17 if mood == Mood.SURPRISED else 0.155)
+        eye_h = r * (0.34 if mood == Mood.SURPRISED else 0.31)
 
         # Gentle periodic blink, shared by the white eyes in every non-smile state.
         # A short smooth close/open cycle roughly every 3.5–5 seconds.
@@ -422,8 +422,8 @@ class LiquidBlob(QWidget):
             # keep their own mouth shape below while _speaking_active drives the
             # overall talking state, so speech never erases the chosen expression.
             voice = (math.sin(t * 11.0) + 1.0) / 2.0
-            mouth_w = r * (0.19 + voice * 0.035)
-            mouth_h = r * (0.055 + abs(math.sin(t * 11.0)) * 0.075)
+            mouth_w = r * (0.27 + voice * 0.045)
+            mouth_h = r * (0.075 + abs(math.sin(t * 11.0)) * 0.095)
             mouth_rect = QRectF(cx - mouth_w / 2, cy + r * 0.17, mouth_w, mouth_h)
             mouth_gradient = QLinearGradient(
                 mouth_rect.left(), mouth_rect.top(), mouth_rect.right(), mouth_rect.bottom()
