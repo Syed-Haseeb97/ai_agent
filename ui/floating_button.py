@@ -216,9 +216,17 @@ class FloatingButton(QWidget):
             else: return
         self.response_popup.show_chat(self.pos())
 
-    def submit_text(self,text):
-        if not text.strip() or self._busy: return
-        self._start_run(text.strip())
+    def submit_text(self, text):
+        text = text.strip()
+        if not text:
+            return
+
+        # Typed questions take priority over the current interaction. In
+        # particular, Enter must interrupt TTS instead of silently discarding
+        # the new prompt while Ruby is busy.
+        if self._busy:
+            self._interrupt_current()
+        self._start_run(text)
 
     def _start_run(self,user_text):
         run_id=self._next_run(); self._busy=True; self._response_ready[run_id] = threading.Event(); self.status_popup.hide_popup(); self.update()
