@@ -1,13 +1,20 @@
 :root {
   font-family: "Segoe UI", Inter, system-ui, sans-serif;
   color: #e8ebf2;
-  background: #080a0f;
+  color-scheme: dark;
   font-synthesis: none;
 }
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 1050px; min-height: 720px; background: #080a0f; }
+html, body, #root { width: 100%; height: 100%; margin: 0; }
+body { min-width: 0; min-height: 0; background: transparent; overflow: hidden; }
 button { font: inherit; color: inherit; border: 0; cursor: pointer; }
-.app-shell { display: flex; height: 100vh; overflow: hidden; background: radial-gradient(circle at 75% 15%, rgba(104, 89, 255, .07), transparent 32%), #080a0f; }
+.app-root { position: relative; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+.app-root.is-expanded { background: #080a0f; }
+.collapsed-layer { position: absolute; right: 24px; bottom: 22px; z-index: 20; display: grid; place-items: center; width: 56px; height: 56px; opacity: 1; transform: scale(1); transition: opacity .22s ease, transform .28s cubic-bezier(.2,.8,.2,1); }
+.collapsed-layer.hidden { pointer-events: none; opacity: 0; transform: scale(.82); }
+.expanded-layer { position: absolute; inset: 0; opacity: 0; transform: translateY(10px) scale(.985); transform-origin: bottom right; pointer-events: none; transition: opacity .2s ease, transform .28s cubic-bezier(.2,.8,.2,1); }
+.expanded-layer.visible { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+.app-shell { display: flex; width: 100%; height: 100%; overflow: hidden; background: radial-gradient(circle at 75% 15%, rgba(104, 89, 255, .07), transparent 32%), #080a0f; }
 .sidebar { width: 238px; flex: 0 0 238px; display: flex; flex-direction: column; padding: 18px 12px 12px; border-right: 1px solid #20242d; background: rgba(13, 15, 21, .96); }
 .brand { display: flex; align-items: center; gap: 11px; padding: 4px 8px 22px; }
 .brand strong { display: block; font-size: 16px; letter-spacing: -.2px; }
@@ -32,12 +39,13 @@ nav { display: grid; gap: 3px; }
 .windowbar { height: 38px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 18px; border-bottom: 1px solid #1d2129; color: #707887; font-size: 10px; }
 .windowbar button { width: 36px; height: 28px; background: transparent; color: #707887; }
 .windowbar button:hover { background: #1b1f27; color: #fff; }
-.content { height: calc(100vh - 38px); overflow: auto; padding: 34px 48px 80px; }
+.content { height: calc(100% - 38px); overflow: auto; padding: 34px 48px 80px; }
 .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 28px; }
 .header h1 { margin: 5px 0 0; font-size: 27px; font-weight: 600; letter-spacing: -.8px; }
 .header-actions { display: flex; gap: 8px; }
 .ghost-button { padding: 8px 11px; border: 1px solid #292e38; border-radius: 7px; background: #10131a; color: #747c8b; font-size: 10px; }
 .new-button, .quick-input button, .resume-button { display: inline-flex; align-items: center; gap: 7px; padding: 9px 13px; border-radius: 7px; background: #e9e8ff; color: #15131f; font-size: 11px; font-weight: 600; }
+.close-button { display: inline-grid; place-items: center; width: 34px; border: 1px solid #292e38; border-radius: 7px; background: #10131a; color: #858d9c; }
 .hero-panel { padding: 28px; border: 1px solid #292e38; border-radius: 13px; background: linear-gradient(135deg, rgba(32,35,47,.96), rgba(17,19,27,.96)); box-shadow: 0 18px 50px rgba(0,0,0,.18); }
 .hero-kicker { display: flex; align-items: center; gap: 7px; color: #9f94ff; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; }
 .hero-panel h2 { margin: 17px 0 6px; font-size: 25px; letter-spacing: -.7px; }
@@ -82,11 +90,14 @@ nav { display: grid; gap: 3px; }
 .chat-empty p { max-width: 390px; color: #707887; font-size: 11px; }
 .chat-input { display: flex; align-items: center; justify-content: space-between; margin: 15px; padding: 11px 12px; border: 1px solid #2a2f39; border-radius: 9px; color: #656d7c; font-size: 11px; }
 .chat-input button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 7px; background: #242131; color: #aaa1ff; }
+.ruby-trigger { display: grid; place-items: center; width: 100%; height: 100%; padding: 0; border-radius: 50%; background: transparent; outline: none; }
+.ruby-trigger:focus-visible { box-shadow: 0 0 0 2px rgba(155,140,255,.65); }
+.ruby-trigger:hover .ruby-orb { transform: scale(1.06); box-shadow: 0 0 28px rgba(125,112,255,.28), inset 0 0 12px rgba(255,255,255,.05); }
 .ruby-orb-wrap { position: relative; width: 34px; height: 34px; flex: 0 0 34px; }
-.ruby-orb { position: absolute; inset: 0; border-radius: 48% 52% 50% 50%; background: radial-gradient(circle at 38% 30%, #22252d 0 8%, #080a0f 45%, #05060a 100%); border: 1px solid #303542; box-shadow: 0 0 22px rgba(125,112,255,.18), inset 0 0 12px rgba(255,255,255,.04); }
+.ruby-orb { position: absolute; inset: 0; border-radius: 48% 52% 50% 50%; background: radial-gradient(circle at 38% 30%, #22252d 0 8%, #080a0f 45%, #05060a 100%); border: 1px solid #303542; box-shadow: 0 0 22px rgba(125,112,255,.18), inset 0 0 12px rgba(255,255,255,.04); transition: transform .18s ease, box-shadow .18s ease; }
 .ruby-eye { position: absolute; top: 12px; width: 4px; height: 6px; border-radius: 50%; background: #f0efff; box-shadow: 0 0 6px rgba(230,226,255,.6); }
 .ruby-eye.left { left: 10px; }.ruby-eye.right { right: 10px; }
-.ruby-status-dot { position: absolute; right: -1px; bottom: 1px; margin: 0; border: 2px solid #0d1016; width: 8px; height: 8px; }
+.ruby-status-dot { position: absolute; right: -1px; bottom: 1px; margin: 0; border: 2px solid #0d1016; width: 8px; height: 8px; border-radius: 50%; background: #9b8cff; box-shadow: 0 0 10px rgba(155,140,255,.8); }
 .floating-ruby { position: fixed; right: 24px; bottom: 22px; display: grid; place-items: center; width: 52px; height: 52px; border: 1px solid #292e38; border-radius: 14px; background: rgba(15,17,23,.92); box-shadow: 0 12px 35px rgba(0,0,0,.4); backdrop-filter: blur(12px); }
 .floating-ruby .ruby-orb-wrap { transform: scale(1.25); }
 @media (max-width: 1180px) { .agent-grid.wide { grid-template-columns: repeat(2, minmax(0, 1fr)); } .content { padding-left: 30px; padding-right: 30px; } }
