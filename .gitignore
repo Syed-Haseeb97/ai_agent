@@ -1,4 +1,6 @@
 .env
+.env.local
+.ruby-bridge-token
 .venv/
 venv/
 __pycache__/

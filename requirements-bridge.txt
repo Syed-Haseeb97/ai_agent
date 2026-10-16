@@ -1,0 +1,6 @@
+# Only needed to RUN the HTTP/WebSocket bridge (background_agent.bridge.app / server / dev_server).
+# The bridge core (service, event hub, confirmation broker, security) is standard library only.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+# Only needed to run tests/background_agent/test_bg_bridge_http.py:
+httpx>=0.27

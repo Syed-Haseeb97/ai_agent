@@ -1,0 +1,6 @@
+# The background_agent core has NO required third-party dependencies (standard library only).
+# Optional, only for the headless-browser tools (Level 3):
+#   playwright
+#   then run once:  python -m playwright install chromium
+# Optional, only if you prefer pytest over unittest:
+#   pytest
