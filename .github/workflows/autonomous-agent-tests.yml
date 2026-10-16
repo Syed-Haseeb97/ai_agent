@@ -1,9 +1,9 @@
 name: Autonomous Agent and Cursor Companion Tests
 on:
   push:
-    branches: [main, feature/autonomous-agent-mode, feature/ruby-cursor-follow, feature/ruby-cursor-follow-ready]
+    branches: [main, feature/autonomous-agent-mode, feature/ruby-cursor-follow, feature/ruby-cursor-follow-ready, feature/f16-cleanup-safety-ready]
   pull_request:
-    branches: [main, feature/ruby-companion-ui-polish, feature/ruby-companion-ui-polish-ready]
+    branches: [main, feature/ruby-companion-ui-polish, feature/ruby-companion-ui-polish-ready, feature/ruby-cursor-follow-ready]
 jobs:
   unit:
     runs-on: ubuntu-latest
@@ -22,3 +22,6 @@ jobs:
       - run: python -m unittest discover -s tests -p 'test_autonomous_agent.py' -v
       - run: python -m unittest discover -s tests -p 'test_agent_verifier.py' -v
       - run: python -m unittest discover -s tests -p 'test_cursor_companion.py' -v
+      - run: python -m unittest discover -s tests -p 'test_cleanup_foundation.py' -v
+      - run: python -m unittest discover -s tests -p 'test_cleanup_executor.py' -v
+      - run: python -m unittest discover -s tests -p 'test_cleanup_cli.py' -v
