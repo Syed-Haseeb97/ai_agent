@@ -4,7 +4,7 @@ Ruby is a Windows desktop AI assistant with a floating UI, voice input/output, G
 
 ## Ruby's floating orb
 
-The floating assistant now uses the glossy animated `LiquidBlob` renderer in `ui/liquid_blob.py`. Its visuals follow the real assistant state: Idle, Listening, Thinking (faceless rotating sphere), Speaking, and Error. The standalone visual playground remains available at `prototypes/liquid_blob/prototype.py` for previewing all character moods.
+The floating assistant uses the glossy animated `LiquidBlob` renderer in `ui/liquid_blob.py`. Operational states (Idle, Listening, Thinking, Speaking, Error) stay separate from response emotions. Gemini returns a response plus one validated emotion label (Neutral, Happy, Excited, Sad, Empathetic, Curious, or Surprised); Ruby uses that label for its expression while speaking, with a safe Neutral fallback if the metadata is missing or malformed. The Sad and other emotional expressions use the liquid body without the dark face core. The standalone visual playground remains available at `prototypes/liquid_blob/prototype.py` for previewing character moods.
 
 ## Functional runtime requirements
 
