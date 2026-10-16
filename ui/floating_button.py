@@ -137,6 +137,17 @@ class FloatingButton(QWidget):
         self.update()
 
 
+    def moveEvent(self, event):
+        """Keep transient UI anchored to the orb during an active drag."""
+        super().moveEvent(event)
+        anchor = self.pos()
+        status_popup = getattr(self, "status_popup", None)
+        if status_popup is not None and status_popup.isVisible():
+            status_popup.reposition(anchor)
+        response_popup = getattr(self, "response_popup", None)
+        if response_popup is not None and response_popup.isVisible():
+            response_popup.reposition(anchor)
+
     def enterEvent(self, event):
         self.blob.hovered = True
         self.blob.update()

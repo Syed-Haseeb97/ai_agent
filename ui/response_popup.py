@@ -328,6 +328,14 @@ class ResponsePopup(QWidget):
         self.input_edit.setFocus(Qt.FocusReason.PopupFocusReason)
 
     def _position(self, near: QPoint, activate: bool = False) -> None:
+        self.reposition(near)
+        self.show()
+        self.raise_()
+        if activate:
+            self.activateWindow()
+
+    def reposition(self, near: QPoint) -> None:
+        """Keep the panel anchored to Ruby without stealing focus while dragging."""
         self.adjustSize()
         screen = QApplication.screenAt(near) or QApplication.primaryScreen()
         bounds = screen.availableGeometry() if screen else self.geometry()
@@ -338,10 +346,6 @@ class ResponsePopup(QWidget):
         x = min(max(bounds.left() + margin, left), bounds.right() - self.width() - margin)
         y = min(max(bounds.top() + margin, near.y() - 8), bounds.bottom() - self.height() - margin)
         self.move(x, y)
-        self.show()
-        self.raise_()
-        if activate:
-            self.activateWindow()
 
     def _submit(self) -> None:
         text = self.input_edit.text().strip()
