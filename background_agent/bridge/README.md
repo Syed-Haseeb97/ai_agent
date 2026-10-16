@@ -13,7 +13,7 @@ Local FastAPI + WebSocket server. REST for commands, one WebSocket for live even
 
 ## Security
 
-The bridge binds to loopback only, uses a new bearer token per launch, checks Origin and Host,
+The bridge binds to loopback only, uses a bearer token, checks Origin and Host,
 rejects wildcard CORS, caps WebSocket connections/frame sizes, and requires authentication before
 streaming events. The token is intended for the local development bridge; production packaging
 should have the native wrapper inject it rather than exposing it as a bundled public secret.
@@ -22,15 +22,15 @@ should have the native wrapper inject it rather than exposing it as a bundled pu
 
 - `GET /v1/health`
 - `GET /v1/state`
-- `POST /v1/tasks` with `{\"goal\":\"...\"}`
+- `POST /v1/tasks` with `{"goal":"..."}`
 - `GET /v1/tasks`
 - `GET /v1/tasks/{id}`
 - `POST /v1/tasks/{id}/cancel`
 - `GET /v1/confirmations`
-- `POST /v1/confirmations/{id}` with `{\"approved\":true|false}`
+- `POST /v1/confirmations/{id}` with `{"approved":true|false}`
 - `POST /v1/backend/reset-quarantine`
 
-Errors use `{\"error\":{\"code\",\"message\"}}`.
+Errors use `{"error":{"code","message"}}`.
 
 ## WebSocket `/v1/events`
 
@@ -50,8 +50,13 @@ an unredacted, bounded description for the confirmation UI only; it never appear
 
 ```powershell
 pip install -r requirements-bridge.txt
-python -m background_agent.bridge.dev_server --env-file desktop_app/.env.local
+python -m background_agent.bridge.dev_server --env-file desktop_app/.env.local --token-file desktop_app/.ruby-bridge-token
 ```
+
+`--token-file` makes the local development bearer token persistent across restarts. A missing, corrupt,
+or too-short token is replaced with a new secure token. The token file is intended for local development
+only and should never be committed. `.env.local` is rewritten only when its contents actually change,
+which avoids unnecessary Vite reloads on a restart with the same token.
 
 For a real integration, create a `BridgeService` around the existing manager/backend, start it, then start
 `BridgeServer`. The React client is deliberately a separate PR so the Python bridge remains UI-independent.
