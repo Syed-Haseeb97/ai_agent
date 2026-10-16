@@ -175,3 +175,16 @@ Install FFmpeg separately and make sure `ffmpeg` and `ffplay` work from a new Po
 - Keep API keys and personal configuration out of Git.
 - Optional automation components should be enabled/tested one feature at a time so they do not interfere with the stable voice/UI pipeline.
 - F6 wake-word support is optional and depends on a compatible local model.
+
+
+## F16 — Autonomous desktop mode with Ruby's cursor companion
+
+Start a bounded autonomous task with:
+
+```powershell
+python autonomous_agent.py "Describe the routine desktop task"
+```
+
+During each approved desktop action, Ruby's existing liquid orb smoothly trails the real cursor with a small offset. It is a transparent, non-activating overlay designed not to intercept clicks. Between actions it parks at the last cursor position so the wall-hit/recoil animation only plays when the task ends. When the main Ruby UI is running, the companion mirrors its fresh operational/emotional expression through a local temporary state file containing only state and emotion labels; stale state expires after 15 seconds. Prompts, transcripts, and screen content are never shared through this channel. The orb renderer and expressions are reused without redesign. Use **Ctrl+Alt+Shift+R** for the emergency stop. Add `--no-orb` to run without the visual overlay.
+
+F16 requires `google-genai>=2.7.0`, `pyautogui>=0.9.54`, `psutil>=5.9.8`, a valid `GEMINI_API_KEY`, and an awake, unlocked interactive Windows desktop. F16 checks named file outputs and common app launches with native verification, applies bounded verification retries, stops on repeated actions without screen change, and best-effort releases held keys/buttons on cancellation. The safety policy remains in force; native verification and unit tests do not replace a Windows smoke test.
