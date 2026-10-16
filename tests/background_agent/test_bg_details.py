@@ -1,16 +1,13 @@
-"""Tests for Action.details() and ConfirmationRequest.details (PR C1 additive)."""
-from __future__ import annotations
-
 import unittest
 
-from background_agent.actions import Action, ActionKind, sanitize_for_display
-from background_agent.policy import ConfirmationRequest
+import helpers  # noqa: F401
+from background_agent import Action, ActionKind, ConfirmationRequest
+from background_agent.actions import sanitize_for_display
 
 
-class DetailsTests(unittest.TestCase):
-    def test_process_run(self):
-        self.assertEqual(Action(ActionKind.PROCESS_RUN, {"argv": ["echo", "hi"]}).details(),
-                         subprocess_quote(["echo", "hi"]))
+class ActionDetailsTests(unittest.TestCase):
+    def test_shell_and_run_show_the_full_command(self):
+        self.assertEqual(Action(ActionKind.PROCESS_SHELL, {"command": "dir C:\\Users /s"}).details(), "dir C:\\Users /s")
         self.assertEqual(Action(ActionKind.PROCESS_RUN, {"argv": ["python", "-c", "print('a b')"]}).details(),
                          subprocess_quote(["python", "-c", "print('a b')"]))
         self.assertIn("[in sub]", Action(ActionKind.PROCESS_SHELL, {"command": "x", "cwd": "sub"}).details())
