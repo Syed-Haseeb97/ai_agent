@@ -13,7 +13,7 @@ from pathlib import Path
 
 class TTS:
     def __init__(self, voice: str | None = None):
-        self.voice = voice or self._load_voice() or "en-US-JennyNeural"
+        self.voice = voice or self._load_voice() or "en-US-AriaNeural"
         self._edge_available = self._check_edge()
         self._stop_event = threading.Event()
         self._process_lock = threading.Lock()
