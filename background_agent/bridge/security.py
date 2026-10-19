@@ -122,18 +122,20 @@ class BridgeAuth:
         self.check_origin(origin)
 
 
-def write_dev_env(path: Path, base_url: str, token: str) -> bool:
-    """Write bridge URL/token while preserving unrelated keys.
+def write_bridge_env(path: Path, base_url: str, token: str) -> bool:
+    """Write host-only bridge URL/token while preserving unrelated keys.
 
     Returns True only when the file contents changed. This lets a restart reuse the
     same token without touching `.env.local`, avoiding unnecessary Vite reloads.
+    Names deliberately omit VITE_: Vite must never expose the bearer token to React.
     """
     path = Path(path)
-    ours = {"VITE_RUBY_BRIDGE_URL": base_url, "VITE_RUBY_BRIDGE_TOKEN": token}
+    ours = {"RUBY_BRIDGE_URL": base_url, "RUBY_BRIDGE_TOKEN": token}
+    old_names = {"VITE_RUBY_BRIDGE_URL", "VITE_RUBY_BRIDGE_TOKEN", *ours}
     kept = []
     if path.exists():
         kept = [ln for ln in path.read_text(encoding="utf-8").splitlines()
-                if ln.split("=", 1)[0].strip() not in ours]
+                if ln.split("=", 1)[0].strip() not in old_names]
     text = "\n".join([*kept, *(f"{k}={v}" for k, v in ours.items())]) + "\n"
     try:
         current = path.read_text(encoding="utf-8") if path.exists() else None
@@ -149,3 +151,8 @@ def write_dev_env(path: Path, base_url: str, token: str) -> bool:
     except OSError:
         pass
     return True
+
+
+def write_dev_env(path: Path, base_url: str, token: str) -> bool:
+    """Backward-compatible alias for the host-only bridge config writer."""
+    return write_bridge_env(path, base_url, token)

@@ -23,7 +23,7 @@ from ..actions import Action, ActionKind
 from ..backends.local_tools import LocalToolBackend
 from ..planner import Finish, PlanContext, Planner
 from ..models import TaskLimits
-from .security import get_or_create_token, write_dev_env
+from .security import get_or_create_token, write_bridge_env
 from .service import BridgeService
 
 
@@ -53,7 +53,7 @@ class DemoPlanner(Planner):
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--env-file", type=Path, help="write VITE_RUBY_BRIDGE_URL/TOKEN here (e.g. desktop_app/.env.local)")
+    parser.add_argument("--env-file", type=Path, help="write host-only RUBY_BRIDGE_URL/TOKEN here (e.g. desktop_app/.env.local)")
     parser.add_argument("--token-file", type=Path, help="persist the local dev bridge bearer token here across restarts")
     parser.add_argument("--workspace", type=Path, default=None)
     args = parser.parse_args(argv)
@@ -74,7 +74,7 @@ def main(argv=None) -> int:
     service.start()
     server.start()
     if args.env_file:
-        changed = write_dev_env(args.env_file, server.base_url, service.auth.token)
+        changed = write_bridge_env(args.env_file, server.base_url, service.auth.token)
         print(f"wrote bridge URL + token to {args.env_file}" + (" (changed)" if changed else " (unchanged)"))
     else:
         print(f"bridge listening on {server.base_url} (use --env-file to hand the token to the Vite app)")

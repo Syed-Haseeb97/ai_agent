@@ -74,6 +74,24 @@ class GeminiClient:
         if self.model is None:
             raise RuntimeError(f"Could not initialize any Gemini flash model. Last error: {last_error}")
 
+    def generate_text(self, prompt: str, *, max_output_tokens: int = 4096,
+                      timeout_seconds: float = 45) -> str:
+        """Generate text with the configured Ruby model and system context.
+
+        Unlike the user-facing screenshot methods below, this lower-level interface
+        propagates provider errors so a planner can fail the task safely instead of
+        interpreting an error message as model output.
+        """
+        response = self.model.generate_content(
+            prompt,
+            generation_config={"temperature": 0.1, "max_output_tokens": max_output_tokens},
+            request_options={"timeout": timeout_seconds},
+        )
+        text = getattr(response, "text", None)
+        if not isinstance(text, str) or not text.strip():
+            raise RuntimeError("Gemini returned an empty response")
+        return text
+
     def ask_with_screenshot(self, jpeg_bytes: bytes, user_text: str) -> str:
         """Backward-compatible text-only interface."""
         answer, _emotion = self.ask_with_screenshot_and_emotion(jpeg_bytes, user_text)

@@ -1,22 +1,21 @@
-# Bridge: Python `BackgroundTaskManager` <-> React shell (PR C1)
+# Ruby localhost bridge
 
-Local FastAPI + WebSocket server. REST for commands, one WebSocket for live events and confirmation prompts. Python generates the port/token; the React/Vite dev app reads them from env vars. **This PR is Python only; the React client/store/panel/modal is PR C2.**
+FastAPI REST and WebSocket transport for the existing `BackgroundTaskManager`. The Electron host polls REST and keeps the bearer token private from React.
 
-## Honest status
+## Runtime modes
 
-| Part | Status |
-|---|---|
-| `BridgeService`, `EventHub`, `ConfirmationBroker`, `BridgeAuth` (stdlib only) | Implemented and tested |
-| FastAPI adapter (`app.py`), `BridgeServer`, `dev_server.py` | Implemented; requires FastAPI/uvicorn to execute |
-| Windows behaviour | Not tested |
-| React client, native-wrapper auth injection, persistence | Not in this PR |
+| Mode | Command | Planner |
+|---|---|---|
+| Development/demo | `python -m background_agent.bridge.dev_server --env-file desktop_app/.env.local` | `DemoPlanner`; deterministic demo behavior, no Gemini request |
+| Production | `python -m background_agent.bridge.production_server --bridge-env-file desktop_app/.env.local` | `GeminiPlanner` using `ai.gemini_client.GeminiClient` |
+
+Production requires `GEMINI_API_KEY` in root `.env` or the process environment. Install `requirements.txt` and `requirements-bridge.txt` first. Start Electron separately with `cd desktop_app; npm run desktop:dev`.
 
 ## Security
 
-The bridge binds to loopback only, uses a bearer token, checks Origin and Host,
-rejects wildcard CORS, caps WebSocket connections/frame sizes, and requires authentication before
-streaming events. The token is intended for the local development bridge; production packaging
-should have the native wrapper inject it rather than exposing it as a bundled public secret.
+The server binds only to loopback, authenticates protected endpoints with a random bearer token, checks Host and allowed Origin headers, rejects wildcard CORS, and limits WebSocket connections/frame sizes. The launcher writes `RUBY_BRIDGE_URL` and `RUBY_BRIDGE_TOKEN` to ignored `desktop_app/.env.local`; it never prints the token and these names do not use Vite's `VITE_` prefix. Electron reads the values inside the host process and React gets only narrow preload methods.
+
+The Electron HTTP client omits Origin, as it is a native host request; it still sends the bearer token and uses the loopback Host. Browser-origin requests must match the explicit origin allowlist.
 
 ## REST
 
@@ -34,29 +33,15 @@ Errors use `{"error":{"code","message"}}`.
 
 ## WebSocket `/v1/events`
 
-The client authenticates with a first frame containing the bearer token and optional epoch/last-sequence
-information. The server sends a hello/full-state or replay, then streams task, confirmation and activity
-frames. Terminal task status events are retained; progress is throttled. Slow clients are closed and
-must resync.
+The client authenticates with a first frame containing the bearer token and optional epoch/last-sequence information. The server sends a hello/full-state or replay, then streams task, confirmation, and activity frames. Slow clients must reconnect and resync. The current Electron UI polls the REST state API instead.
 
-## Confirmation flow
+## Production action boundary
 
-A policy CONFIRM decision creates a pending confirmation. The worker waits cooperatively while the bridge
-broadcasts the request. The UI explicitly approves or denies exactly one action. Timeout, cancellation,
-shutdown, duplicate responses, and broker failure all fail closed. `ConfirmationRequest.details` contains
-an unredacted, bounded description for the confirmation UI only; it never appears in progress/snapshots.
+`GeminiPlanner` returns strict JSON decisions as `Action` or `Finish`. It cannot execute anything. Production advertises only workspace-confined filesystem actions to the planner; the worker still checks capabilities and `DefaultActionPolicy` before execution. Deletes and overwrites require one-time approval through the existing broker. Process/shell, browser, and GUI actions are disabled. GUI remains unsupported until an isolated Windows Sandbox/VM backend exists; F16 and the separate `WindowsActionExecutor` are not invoked by the bridge.
 
-## Dev usage
+## Tests
 
 ```powershell
-pip install -r requirements-bridge.txt
-python -m background_agent.bridge.dev_server --env-file desktop_app/.env.local --token-file desktop_app/.ruby-bridge-token
+python -m unittest discover -s tests/background_agent -p "test_bg_*.py" -v
+python -m unittest discover -s tests -p "test_*.py" -v
 ```
-
-`--token-file` makes the local development bearer token persistent across restarts. A missing, corrupt,
-or too-short token is replaced with a new secure token. The token file is intended for local development
-only and should never be committed. `.env.local` is rewritten only when its contents actually change,
-which avoids unnecessary Vite reloads on a restart with the same token.
-
-For a real integration, create a `BridgeService` around the existing manager/backend, start it, then start
-`BridgeServer`. The React client is deliberately a separate PR so the Python bridge remains UI-independent.
