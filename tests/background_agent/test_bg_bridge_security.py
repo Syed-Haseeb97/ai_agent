@@ -47,7 +47,7 @@ class BridgeTokenFileTests(unittest.TestCase):
             write_dev_env(path, "http://127.0.0.1:8765", "token-1234567890")
             self.assertEqual(
                 path.read_text(encoding="utf-8"),
-                "OTHER=value\nVITE_RUBY_BRIDGE_URL=http://127.0.0.1:8765\nVITE_RUBY_BRIDGE_TOKEN=token-1234567890\n",
+                "OTHER=value\nRUBY_BRIDGE_URL=http://127.0.0.1:8765\nRUBY_BRIDGE_TOKEN=token-1234567890\n",
             )
 
 

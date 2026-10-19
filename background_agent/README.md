@@ -1,15 +1,16 @@
 # Ruby Background Agent (core package)
 
 Lets Ruby work on a long task **in a separate execution environment** while you keep using
-your computer. UI-independent: the React shell will consume it through a bridge in a later PR.
+your computer. The Electron shell consumes this package through the authenticated localhost bridge.
 
 > **The guarantee this package is built around:** selecting *Background Task* must never mean
 > Ruby moves your mouse, types on your keyboard, or takes focus on your real desktop.
 > The only backend shipped here (`LocalToolBackend`) has **no mouse/keyboard/screen-control
 > capability at all**. GUI work returns `GUI_ISOLATION_REQUIRED` instead of touching your desktop.
 
-This package does **not** import, modify, wrap or simulate F16 / Live Operator, and it does not
-import anything from the rest of the repo. It is additive.
+This package does **not** import, modify, wrap or simulate F16 / Live Operator. Its production
+Gemini adapter imports the repository's existing `ai.gemini_client.GeminiClient`; the bridge does
+not call F16 or the separate `WindowsActionExecutor`.
 
 ## Honest status
 
@@ -17,19 +18,19 @@ import anything from the rest of the repo. It is additive.
 |---|---|
 | Task manager, queue, lifecycle, cancellation, timeouts, verification, policy hooks | Implemented and tested with mock + real backends (on Linux) |
 | Filesystem + process tools (`LocalToolBackend`) | Implemented; tested on Linux. **Not yet run on Windows** |
-| Headless browser tools (Playwright) | Implemented; real Chromium integration test passes on **Linux**; not run on Windows |
-| **Isolated Windows GUI automation** | **NOT implemented.** Needs a `WindowsSandboxBackend` / `VMBackend` |
-| LLM planner (Gemini) | **Not implemented.** Only the `Planner` interface + `ScriptedPlanner`. |
-| UI mode switch, task panel, notification, Ruby-state bridge | **Not in this PR** |
+| Headless browser tools (Playwright) | Implemented in the core; disabled by the production launcher |
+| LLM planner (Gemini) | `GeminiPlanner` adapts the existing `ai.gemini_client.GeminiClient`; `DemoPlanner` remains dev/test-only. |
+| Production bridge launcher | `python -m background_agent.bridge.production_server`; requires `.env` with `GEMINI_API_KEY` and bridge dependencies. |
+| Isolated Windows GUI automation | **NOT implemented.** GUI actions fail closed; needs a `WindowsSandboxBackend` / `VMBackend`. |
 
 ## Architecture
 
 ```text
-Ruby UI (React)  --bridge (later PR)-->  BackgroundTaskManager
+Ruby UI (React)  --authenticated localhost bridge-->  BackgroundTaskManager
                                            | queue + scheduler
                                            | per task: supervisor -> worker
                                            v
-   Planner --> Action --> capability check -> ActionPolicy -> confirmation
+   GeminiPlanner --> Action --> capability check -> ActionPolicy -> confirmation
                                                    -> ExecutionEnvironment.execute()
                                            |
                                            v
@@ -68,13 +69,29 @@ manager.cancel(task.id)
 manager.shutdown()
 ```
 
-The React bridge will later expose submit/cancel/list operations and stream task events. Keep
-background activity separate from Ruby's emotion enum.
+The production Gemini planner can request workspace-confined filesystem actions only. Process,
+shell, browser, and GUI actions are disabled. File deletion and overwrites still require the
+existing per-action confirmation. Keep background task status separate from Ruby's emotion enum.
+
+## Production bridge
+
+Set `GEMINI_API_KEY` in the repository root `.env`, install `requirements.txt` and
+`requirements-bridge.txt`, then run:
+
+```powershell
+python -m background_agent.bridge.production_server --bridge-env-file desktop_app/.env.local
+```
+
+Start the Electron UI separately from `desktop_app` using `npm run desktop:dev`. The Python
+host writes a fresh bearer token to `RUBY_BRIDGE_TOKEN` in the ignored `.env.local`; Electron
+reads it in its host process, and the React renderer never receives it. The server binds to
+loopback. For demo behavior without Gemini, use `python -m background_agent.bridge.dev_server`.
 
 ## Install & test
 
 ```powershell
 python -m unittest discover -s tests/background_agent -p "test_bg_*.py" -v
+python -m unittest discover -s tests -p "test_*.py" -v
 # optional:
 python -m pytest tests/background_agent
 # optional real-browser tests:
@@ -82,6 +99,5 @@ python -m pip install playwright
 python -m playwright install chromium
 ```
 
-The current implementation is a **foundation**, not a claim of true isolated Windows GUI
-computer use. That capability comes only after a real Sandbox/VM execution backend is built
-and tested on Windows.
+The task runtime does not provide isolated Windows GUI computer use. That capability comes
+only after a real Sandbox/VM execution backend is built and tested on Windows.

@@ -12,7 +12,7 @@ function bridgeConfig() {
   const envPath = path.join(__dirname, '..', '.env.local');
   try {
     for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
-      const match = line.match(/^\s*(?:VITE_)?RUBY_BRIDGE_(URL|TOKEN)\s*=\s*(.*?)\s*$/);
+      const match = line.match(/^\s*RUBY_BRIDGE_(URL|TOKEN)\s*=\s*(.*?)\s*$/);
       if (match && !config[`RUBY_BRIDGE_${match[1]}`]) config[`RUBY_BRIDGE_${match[1]}`] = match[2].replace(/^['"]|['"]$/g, '');
     }
   } catch {}
@@ -41,7 +41,7 @@ async function bridgeRequest(route, options = {}) {
 function placeWindow(isExpanded) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMaximized()) mainWindow.unmaximize();
-  if (expanded) {
+  if (isExpanded) {
     mainWindow.setResizable(true);
     mainWindow.setMinimumSize(850, 620);
     mainWindow.setSize(1240, 820, true);

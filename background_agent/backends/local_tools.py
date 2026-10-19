@@ -22,7 +22,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Callable, Dict, FrozenSet, List, Optional, Sequence
+from typing import Callable, Dict, FrozenSet, Iterable, List, Optional, Sequence
 
 from ..actions import (Action, ActionErrorCode, ActionFailure, ActionKind, ActionResult,
                        BROWSER_KINDS, FS_KINDS, PROCESS_KINDS)
@@ -309,11 +309,13 @@ class LocalToolBackend(ExecutionBackend):
     def __init__(self, workspace_root: Path, *, extra_allowed_roots: Sequence[Path] = (),
                  enable_browser: bool = False,
                  browser_engine_factory: Optional[Callable[[], BrowserEngine]] = None,
+                 allowed_kinds: Optional[Iterable[ActionKind]] = None,
                  max_read_bytes: int = 1_000_000, max_output_chars: int = 20_000,
                  cleanup_timeout: float = 15.0) -> None:
         self.workspace_root = Path(workspace_root).resolve()
         self.extra_roots = [Path(r).resolve() for r in extra_allowed_roots]
         self.enable_browser = enable_browser
+        self.allowed_kinds = frozenset(allowed_kinds) if allowed_kinds is not None else None
         self._engine_factory = browser_engine_factory or PlaywrightEngine
         self._max_read, self._max_out, self._cleanup = max_read_bytes, max_output_chars, cleanup_timeout
 
@@ -334,6 +336,8 @@ class LocalToolBackend(ExecutionBackend):
         if self.enable_browser:
             caps |= set(BROWSER_KINDS)
             controller = BrowserController(self._engine_factory, lambda raw: self._resolve_for(workspace, raw))
+        if self.allowed_kinds is not None:
+            caps &= self.allowed_kinds
         env = LocalToolEnvironment(workspace, [workspace, *self.extra_roots], frozenset(caps), controller,
                                    max_read_bytes=self._max_read, max_output_chars=self._max_out,
                                    cleanup_timeout=self._cleanup)
