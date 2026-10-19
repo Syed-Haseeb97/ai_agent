@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Home, MessageSquare, Bot, Workflow, FolderKanban, History, Settings, Minus, Square, X } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { RubyOrb } from './components/RubyOrb';
@@ -11,6 +11,9 @@ function App() {
   const [active, setActive] = useState('home');
   const [isExpanded, setIsExpanded] = useState(false);
   const placeholder = placeholderViews[active];
+  useEffect(() => {
+    window.rubyDesktop?.setExpanded(isExpanded);
+  }, [isExpanded]);
   const view = active === 'home'
     ? <HomeView setActive={setActive} />
     : active === 'chat'
@@ -25,7 +28,7 @@ function App() {
         <div className="app-shell">
           <Sidebar active={active} setActive={setActive} />
           <main className="main">
-            <div className="windowbar"><span>Ruby</span><div><button aria-label="Minimize" onClick={() => setIsExpanded(false)}><Minus size={14} /></button><button aria-label="Maximize"><Square size={12} /></button><button aria-label="Close" onClick={() => setIsExpanded(false)}><X size={14} /></button></div></div>
+            <div className="windowbar"><span>Ruby</span><div><button aria-label="Minimize" onClick={() => window.rubyDesktop?.minimize()}><Minus size={14} /></button><button aria-label="Maximize" onClick={() => window.rubyDesktop?.toggleMaximize()}><Square size={12} /></button><button aria-label="Close" onClick={() => window.rubyDesktop ? window.rubyDesktop.close() : setIsExpanded(false)}><X size={14} /></button></div></div>
             <div className="content">{view}</div>
             <div className="floating-ruby"><RubyOrb label="Collapse Ruby" onClick={() => setIsExpanded(false)} /></div>
           </main>
