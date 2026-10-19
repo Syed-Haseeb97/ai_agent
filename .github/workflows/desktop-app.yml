@@ -1,0 +1,32 @@
+name: Desktop app build
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "desktop_app/**"
+      - ".github/workflows/desktop-app.yml"
+  push:
+    branches: [main]
+    paths:
+      - "desktop_app/**"
+      - ".github/workflows/desktop-app.yml"
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop_app/package-lock.json
+      - run: npm ci
+        working-directory: desktop_app
+      - run: npm audit --omit=dev --audit-level=moderate
+        working-directory: desktop_app
+      - run: npm run build
+        working-directory: desktop_app
+      - run: npm run desktop:dist
+        working-directory: desktop_app
