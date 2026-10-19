@@ -2,12 +2,9 @@
 
 Requires: pip install fastapi "uvicorn[standard]"   (see requirements-bridge.txt)
 
-NOTE: this module was written without FastAPI available in the build environment and has
-NOT been executed there. tests/background_agent/test_bg_bridge_http.py exercises it and
-auto-skips when FastAPI is missing - run it on your machine before relying on this layer.
+The HTTP adapter is covered by tests/background_agent/test_bg_bridge_http.py. FastAPI and
+the test client remain optional dependencies for users of the core package.
 """
-from __future__ import annotations
-
 import asyncio
 import json
 from typing import Any, Optional
