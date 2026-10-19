@@ -90,6 +90,31 @@ nav { display: grid; gap: 3px; }
 .chat-empty p { max-width: 390px; color: #707887; font-size: 11px; }
 .chat-input { display: flex; align-items: center; justify-content: space-between; margin: 15px; padding: 11px 12px; border: 1px solid #2a2f39; border-radius: 9px; color: #656d7c; font-size: 11px; }
 .chat-input button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 7px; background: #242131; color: #aaa1ff; }
+.bridge-status { display: flex; align-items: center; gap: 8px; margin: -16px 0 20px; color: #838b9b; font-size: 10px; }
+.bridge-status i { width: 7px; height: 7px; border-radius: 50%; background: #bd8457; }
+.bridge-status.online i { background: #72b98a; box-shadow: 0 0 8px #72b98a88; }
+.bridge-status.offline { color: #c28b68; }
+.task-card h3 { overflow-wrap: anywhere; }
+.task-card .state-badge.completed .state-dot { background: #72b98a; }
+.task-card .state-badge.failed .state-dot, .task-card .state-badge.timeout .state-dot { background: #d06e73; }
+.task-progress { max-height: 70px; overflow: auto; padding-left: 15px; color: #8d95a5; font-size: 10px; line-height: 1.6; }
+.task-result { color: #9bc9a8 !important; }
+.task-error { color: #e08d8d !important; overflow-wrap: anywhere; }
+.task-outputs { max-height: 70px; overflow: auto; margin: 10px 0; color: #9d95dc; font-size: 9px; overflow-wrap: anywhere; }
+.empty-state { padding: 24px; color: #737b8b; font-size: 11px; }
+.confirmation-card { margin: 12px 0; padding: 16px; border: 1px solid #54452f; border-radius: 10px; background: #17140f; }
+.confirmation-card strong { font-size: 12px; }
+.confirmation-card p { color: #b1a087; font-size: 10px; }
+.confirmation-card pre { max-height: 100px; overflow: auto; color: #8c929f; font: 10px/1.5 "Cascadia Code", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.confirmation-card > div { display: flex; gap: 8px; }
+.confirmation-card .stop-button { margin-left: 0; }
+.canvas-toolbar .ghost-button { display: inline-flex; align-items: center; gap: 7px; }
+.task-compose { align-items: flex-end; gap: 10px; }
+.task-compose textarea { flex: 1; min-height: 72px; max-height: 180px; resize: vertical; border: 0; outline: 0; background: transparent; color: #e8ebf2; font: inherit; font-size: 12px; }
+.task-compose textarea::placeholder { color: #656d7c; }
+.task-compose button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: auto; height: 36px; padding: 0 12px; white-space: nowrap; }
+.task-compose button:disabled { opacity: .45; cursor: not-allowed; }
+.bridge-message { margin: 0 16px 14px; color: #9d95dc; font-size: 10px; }
 .ruby-trigger { display: grid; place-items: center; width: 100%; height: 100%; padding: 0; border-radius: 50%; background: transparent; outline: none; }
 .ruby-trigger:focus-visible { box-shadow: 0 0 0 2px rgba(155,140,255,.65); }
 .ruby-trigger:hover .ruby-orb { transform: scale(1.06); box-shadow: 0 0 28px rgba(125,112,255,.28), inset 0 0 12px rgba(255,255,255,.05); }
