@@ -11,6 +11,7 @@ import time
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from ..backend import ExecutionBackend
+from ai.chat_service import ChatService
 from ..errors import InvalidGoalError, ManagerClosedError, QueueFullError, TaskNotFoundError
 from ..manager import BackgroundTaskManager, PlannerFactory, TaskEvent
 from ..models import TERMINAL_STATUSES, TaskLimits, TaskStatus
@@ -32,9 +33,11 @@ MAX_TRACKED_MODES = 500
 class BridgeService:
     def __init__(self, manager: BackgroundTaskManager, broker: ConfirmationBroker, hub: EventHub,
                  auth: BridgeAuth, backend_name: str = "", *,
-                 cursor_control: Optional[CursorControlTasks] = None) -> None:
+                 cursor_control: Optional[CursorControlTasks] = None,
+                 chat_service: Optional[ChatService] = None) -> None:
         self.manager, self.broker, self.hub, self.auth = manager, broker, hub, auth
         self._backend_name = backend_name
+        self.chat_service = chat_service
         self.cursor_control = cursor_control or CursorControlTasks()
         self.dispatcher = TaskDispatcher({
             ExecutionMode.TASK_DOING: self._submit_managed,
@@ -56,14 +59,15 @@ class BridgeService:
                default_limits: Optional[TaskLimits] = None, max_queued: int = 20, max_history: int = 200,
                confirmation_timeout: float = 120.0, token: Optional[str] = None,
                allowed_origins: Optional[Iterable[str]] = None, hub_buffer: int = 1000,
-               cursor_control: Optional[CursorControlTasks] = None) -> "BridgeService":
+               cursor_control: Optional[CursorControlTasks] = None,
+               chat_service: Optional[ChatService] = None) -> "BridgeService":
         hub = EventHub(hub_buffer)
         broker = ConfirmationBroker(timeout_seconds=confirmation_timeout)
         manager = BackgroundTaskManager(backend, planner_factory, policy=policy, verifier=verifier,
                                         confirmation_handler=broker, default_limits=default_limits,
                                         max_queued=max_queued, max_history=max_history)
         return cls(manager, broker, hub, BridgeAuth(token, allowed_origins),
-                   getattr(backend, "name", ""), cursor_control=cursor_control)
+                   getattr(backend, "name", ""), cursor_control=cursor_control, chat_service=chat_service)
 
     def start(self) -> None:
         self.manager.start()
@@ -90,6 +94,19 @@ class BridgeService:
 
     def submit_task(self, goal: Any, execution_mode: Any = None) -> Dict[str, Any]:
         return self.submit(goal, execution_mode).task
+
+    def chat(self, conversation_id: Any, message: Any) -> Dict[str, str]:
+        """Send a chat turn without invoking the task planner or desktop operator."""
+        if self.chat_service is None:
+            raise BridgeError(ErrorCode.SERVICE_UNAVAILABLE, "Ruby chat is not configured.")
+        try:
+            return self.chat_service.send(conversation_id, message)
+        except ValueError as exc:
+            raise BridgeError(ErrorCode.BAD_REQUEST, str(exc)) from None
+        except Exception:
+            log.exception("Ruby conversational request failed")
+            raise BridgeError(ErrorCode.SERVICE_UNAVAILABLE,
+                              "Ruby could not answer right now. Check Gemini configuration and try again.") from None
 
     def _submit_managed(self, goal: str) -> Dict[str, Any]:
         try:
