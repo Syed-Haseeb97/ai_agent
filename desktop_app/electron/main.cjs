@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, screen, safeStorage, clipboard } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { registerClipboardKeyHandler } = require('./clipboard-key.cjs');
 const { BackendSupervisor } = require('./backend-supervisor.cjs');
 const { BridgeEventPump } = require('./bridge-events.cjs');
 
@@ -179,13 +180,7 @@ ipcMain.on('ruby:window:toggle-maximize', () => {
 });
 
 ipcMain.handle('ruby:runtime:state', async () => backend?.state || { status: 'STARTING', message: 'Starting Ruby…' });
-ipcMain.handle('ruby:runtime:configure-key-from-clipboard', async () => {
-  const key = clipboard.readText();
-  if (typeof key !== 'string' || !key.trim()) throw new Error('Copy your Gemini API key first, then choose Paste key and start Ruby.');
-  const configured = await backend.configureKey(key);
-  if (configured && clipboard.readText() === key) clipboard.clear();
-  return backend.state;
-});
+registerClipboardKeyHandler({ ipcMain, clipboard, getBackend: () => backend });
 ipcMain.handle('ruby:bridge:state', async () => backend.request('/v1/state'));
 ipcMain.handle('ruby:bridge:chat', async (_event, payload) => {
   if (!payload || typeof payload !== 'object') throw new Error('Invalid chat payload.');
