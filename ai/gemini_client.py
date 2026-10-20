@@ -57,7 +57,7 @@ def _load_context() -> str:
 
 
 def _configured_models() -> list[str]:
-    primary = (os.getenv("RUBY_GEMINI_CHAT_MODEL") or os.getenv("GEMINI_CHAT_MODEL") or DEFAULT_CHAT_MODEL).strip()
+    primary = (os.getenv("RUBY_GEMINI_MODEL") or os.getenv("GEMINI_MODEL") or os.getenv("RUBY_GEMINI_CHAT_MODEL") or os.getenv("GEMINI_CHAT_MODEL") or DEFAULT_CHAT_MODEL).strip()
     configured_fallbacks = os.getenv("RUBY_GEMINI_FALLBACK_MODELS", "")
     fallbacks = [item.strip() for item in configured_fallbacks.split(",") if item.strip()]
     if not fallbacks:
@@ -74,16 +74,17 @@ class GeminiClient:
             raise RuntimeError("google-generativeai is not installed")
         genai.configure(api_key=key)
         self.models = []
+        self.model_names = []
         errors = []
         for name in _configured_models():
             try:
                 self.models.append(genai.GenerativeModel(model_name=name, system_instruction=_load_context()))
+                self.model_names.append(name)
             except Exception as exc:
                 errors.append(f"{name}: {exc}")
         if not self.models:
             raise RuntimeError("Could not initialize a Gemini model. " + "; ".join(errors))
         self.model = self.models[0]
-        self.model_names = _configured_models()[:len(self.models)]
 
     def _available_models(self):
         # Keep compatibility with callers/tests that construct a client without __init__.
@@ -108,6 +109,10 @@ class GeminiClient:
                 answer = getattr(response, "text", None)
                 if isinstance(answer, str) and answer.strip():
                     self.model = model
+                    if hasattr(self, "models") and index > 0:
+                        self.models = [model, *(candidate for candidate in self.models if candidate is not model)]
+                        if hasattr(self, "model_names"):
+                            self.model_names = [getattr(model, "model_name", self.model_names[index] if index < len(self.model_names) else "fallback"), *(name for name in self.model_names if name != getattr(model, "model_name", None))]
                     return answer.strip()
                 errors.append(f"model {index + 1} returned an empty response")
             except Exception as exc:
