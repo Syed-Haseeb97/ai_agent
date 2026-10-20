@@ -171,6 +171,17 @@ ipcMain.handle('ruby:runtime:configure-key-from-clipboard', async () => {
   return backend.state;
 });
 ipcMain.handle('ruby:bridge:state', async () => backend.request('/v1/state'));
+ipcMain.handle('ruby:bridge:chat', async (_event, payload) => {
+  if (!payload || typeof payload !== 'object') throw new Error('Invalid chat payload.');
+  const message = typeof payload.message === 'string' ? payload.message.trim() : '';
+  const conversationId = typeof payload.conversationId === 'string' ? payload.conversationId : '';
+  if (!message || message.length > 8000) throw new Error('Enter a message up to 8,000 characters.');
+  if (conversationId.length > 128) throw new Error('Invalid conversation ID.');
+  return backend.request('/v1/chat', {
+    method: 'POST',
+    body: JSON.stringify({ message, conversationId: conversationId || null }),
+  });
+});
 ipcMain.handle('ruby:bridge:submit', async (_event, task) => {
   if (!task || typeof task !== 'object') throw new Error('Invalid task payload.');
   const goal = typeof task.goal === 'string' ? task.goal.trim() : '';
@@ -224,5 +235,5 @@ app.on('before-quit', (event) => {
     return;
   }
   bridgeEvents?.stop();
-  for (const channel of ['ruby:bridge:state', 'ruby:bridge:submit', 'ruby:bridge:cancel', 'ruby:bridge:confirm']) ipcMain.removeHandler(channel);
+  for (const channel of ['ruby:bridge:state', 'ruby:bridge:chat', 'ruby:bridge:submit', 'ruby:bridge:cancel', 'ruby:bridge:confirm']) ipcMain.removeHandler(channel);
 });
