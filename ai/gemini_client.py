@@ -22,7 +22,7 @@ PREFS_FILE = ROOT / "preferences.json"
 DEFAULT_CHAT_MODEL = "gemini-2.5-flash"
 DEFAULT_FALLBACK_MODELS = ("gemini-2.0-flash", "gemini-flash-latest")
 
-BASE_PROMPT = """You are Ruby, a capable, conversational desktop AI assistant that can see the user's current screen through a screenshot.
+BASE_PROMPT = """You are Ruby, a capable, conversational desktop AI assistant. When a screenshot is supplied, use it as additional context about the user's current screen.
 
 Answering rules:
 - Answer the user's actual question first. Do not begin with filler, meta-commentary, or claims about what you can or cannot access.
