@@ -7,14 +7,12 @@ from typing import Any, Dict
 PROTOCOL_VERSION = 1
 MAX_WS_CONNECTIONS = 8
 WS_AUTH_TIMEOUT_SECONDS = 5.0
-WS_HEARTBEAT_SECONDS = 20.0
-
-# Close codes (4000-4999 are application-defined)
-WS_CLOSE_POLICY = 1008        # bad Origin/Host
-WS_CLOSE_TRY_LATER = 1013     # too many connections
-WS_CLOSE_UNAUTHORIZED = 4401  # missing/invalid auth frame
-WS_CLOSE_OVERFLOW = 4408      # consumer too slow; reconnect and resync
+WS_CLOSE_POLICY = 1008
+WS_CLOSE_TRY_LATER = 1013
+WS_CLOSE_UNAUTHORIZED = 4401
+WS_CLOSE_OVERFLOW = 4408
 WS_CLOSE_BAD_FRAME = 4400
+WS_HEARTBEAT_SECONDS = 20.0
 
 
 class ErrorCode(str, enum.Enum):
@@ -25,12 +23,13 @@ class ErrorCode(str, enum.Enum):
     INVALID_GOAL = "INVALID_GOAL"
     QUEUE_FULL = "QUEUE_FULL"
     SHUTTING_DOWN = "SHUTTING_DOWN"
+    SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
 
 
 _HTTP_STATUS = {
     ErrorCode.BAD_REQUEST: 400, ErrorCode.UNAUTHORIZED: 401, ErrorCode.FORBIDDEN: 403,
     ErrorCode.NOT_FOUND: 404, ErrorCode.INVALID_GOAL: 422, ErrorCode.QUEUE_FULL: 429,
-    ErrorCode.SHUTTING_DOWN: 503,
+    ErrorCode.SHUTTING_DOWN: 503, ErrorCode.SERVICE_UNAVAILABLE: 503,
 }
 
 

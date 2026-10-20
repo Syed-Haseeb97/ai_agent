@@ -5,6 +5,7 @@ import { RubyOrb } from './components/RubyOrb';
 import { DEFAULT_EXECUTION_MODE } from './components/ExecutionModeSelector';
 import { HomeView, ChatView, AgentsView, Placeholder, placeholderViews } from './views';
 import './styles.css';
+import './chat.css';
 
 const iconByRoute = { home: Home, chat: MessageSquare, agents: Bot, ...Object.fromEntries(Object.entries(placeholderViews).map(([key, value]) => [key, value.icon])) };
 

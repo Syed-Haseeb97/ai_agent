@@ -43,6 +43,29 @@ class GeminiClientTextTests(unittest.TestCase):
         with self.assertRaisesRegex(OSError, "offline"):
             self.client(FakeModel(error=OSError("offline"))).generate_text("prompt")
 
+    def test_generate_text_falls_back_when_primary_model_fails(self):
+        primary = FakeModel(error=OSError("rate limited"))
+        fallback = FakeModel(FakeResponse("answer from fallback"))
+        client = self.client(primary)
+        client.models = [primary, fallback]
+        self.assertEqual(client.generate_text("prompt"), "answer from fallback")
+        self.assertEqual(len(primary.calls), 1)
+        self.assertEqual(len(fallback.calls), 1)
+        self.assertIs(client.model, fallback)
+
+    def test_chat_passes_conversation_history_as_provider_roles(self):
+        model = FakeModel(FakeResponse("The second one is option B."))
+        client = self.client(model)
+        client.chat([
+            {"role": "user", "content": "Which options are listed?"},
+            {"role": "assistant", "content": "Option A and option B."},
+            {"role": "user", "content": "What about the second one?"},
+        ])
+        contents = model.calls[0][0]
+        self.assertEqual([item["role"] for item in contents], ["user", "model", "user"])
+        self.assertEqual(contents[-1]["parts"], ["What about the second one?"])
+        self.assertEqual(model.calls[0][1]["max_output_tokens"], 4096)
+
 
 if __name__ == "__main__":
     unittest.main()

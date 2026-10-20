@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('rubyDesktop', Object.freeze({
   }),
   bridge: Object.freeze({
     getState: () => ipcRenderer.invoke('ruby:bridge:state'),
+    chat: (payload) => ipcRenderer.invoke('ruby:bridge:chat', payload),
     submitTask: (task) => ipcRenderer.invoke('ruby:bridge:submit', task),
     cancelTask: (taskId) => ipcRenderer.invoke('ruby:bridge:cancel', taskId),
     respondConfirmation: (id, approved) => ipcRenderer.invoke('ruby:bridge:confirm', id, approved),
