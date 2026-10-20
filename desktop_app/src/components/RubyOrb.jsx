@@ -109,7 +109,7 @@ export function RubyOrb({ label = 'Ruby', onClick }) {
         style={{ '--orb-gaze-x': `${gaze.x}px`, '--orb-gaze-y': `${gaze.y}px` }}
         aria-hidden="true"
       >
-        <OrbArtwork state={visual.state} />
+        <OrbArtwork state={visual.state} gaze={gaze} />
         <span className="ruby-target" />
         <span className="ruby-status-dot" />
       </span>
@@ -122,7 +122,7 @@ export function RubyOrb({ label = 'Ruby', onClick }) {
  * currents, dark face core, and highlights stay together as one scalable asset
  * so the compact sidebar and standalone orb render the same character.
  */
-function OrbArtwork({ state }) {
+function OrbArtwork({ state, gaze }) {
   const rawId = useId();
   const id = `ruby-liquid-${rawId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
   return (
@@ -170,12 +170,12 @@ function OrbArtwork({ state }) {
           <path className="orb-face-brow brow-right" d="M58 40 Q64 36 70 40" />
           <g className="orb-face-eye eye-left">
             <ellipse className="orb-face-eye-white" cx="36" cy="47" rx="5.1" ry="7.2" />
-            <ellipse className="orb-face-pupil" cx={36 + gazeOffset(state).x} cy={48 + gazeOffset(state).y} rx="2.2" ry="3.2" />
+            <ellipse className="orb-face-pupil" cx={36 + gaze.x} cy={48 + gaze.y} rx="2.2" ry="3.2" />
             <circle className="orb-face-glint" cx="36.5" cy="45" r="1.1" />
           </g>
           <g className="orb-face-eye eye-right">
             <ellipse className="orb-face-eye-white" cx="64" cy="47" rx="5.1" ry="7.2" />
-            <ellipse className="orb-face-pupil" cx={64 + gazeOffset(state).x} cy={48 + gazeOffset(state).y} rx="2.2" ry="3.2" />
+            <ellipse className="orb-face-pupil" cx={64 + gaze.x} cy={48 + gaze.y} rx="2.2" ry="3.2" />
             <circle className="orb-face-glint" cx="64.5" cy="45" r="1.1" />
           </g>
           <path className="orb-face-mouth mouth-idle" d="M43 64 Q50 68 57 64" />
@@ -187,6 +187,3 @@ function OrbArtwork({ state }) {
   );
 }
 
-function gazeOffset(state) {
-  return state === 'working' ? { x: 2, y: 1 } : { x: 0, y: 0 };
-}
