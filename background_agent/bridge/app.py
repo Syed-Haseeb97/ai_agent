@@ -29,6 +29,10 @@ def create_app(service: BridgeService):
     class ConfirmBody(BaseModel):
         approved: bool
 
+    class ChatBody(BaseModel):
+        message: str
+        conversationId: Optional[str] = None
+
     app = FastAPI(title="Ruby background bridge", version=str(PROTOCOL_VERSION),
                   docs_url=None, redoc_url=None, openapi_url="/v1/openapi.json")
     # Explicit origins only (never "*"): needed because the Vite dev server is a different origin.
@@ -64,6 +68,10 @@ def create_app(service: BridgeService):
         submission = service.submit(body.goal, body.executionMode)
         response.status_code = submission.http_status
         return submission.task
+
+    @app.post("/v1/chat", dependencies=auth)
+    def chat(body: ChatBody) -> Any:
+        return service.chat(body.conversationId, body.message)
 
     @app.get("/v1/tasks", dependencies=auth)
     def list_tasks(status: Optional[str] = None, limit: int = 100) -> Any:
