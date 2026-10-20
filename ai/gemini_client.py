@@ -19,8 +19,8 @@ load_dotenv()
 ROOT = Path(__file__).resolve().parent.parent
 MEMORY_FILE = ROOT / "memory.json"
 PREFS_FILE = ROOT / "preferences.json"
-DEFAULT_CHAT_MODEL = "gemini-2.5-flash"
-DEFAULT_FALLBACK_MODELS = ("gemini-2.0-flash", "gemini-flash-latest")
+DEFAULT_CHAT_MODEL = "gemini-3.8-flash"
+DEFAULT_FALLBACK_MODELS = ("gemini-3.7-flash", "gemini-3.6-flash")
 
 BASE_PROMPT = """You are Ruby, a capable, conversational desktop AI assistant. When a screenshot is supplied, use it as additional context about the user's current screen.
 
