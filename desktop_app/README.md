@@ -98,7 +98,7 @@ The Control Center's **Chat** tab uses the authenticated local bridge endpoint `
 Conversation history is held in memory by the running Python process and is isolated by conversation ID. The latest ten turns are retained; starting a new conversation resets the UI to a fresh ID. History is not persisted across backend restarts.
 
 Gemini chat model configuration is read from environment variables:
-- `RUBY_GEMINI_CHAT_MODEL` (or `GEMINI_CHAT_MODEL`): primary model.
+- `RUBY_GEMINI_MODEL` (or `GEMINI_MODEL`): primary model shared by chat and task planning. The older `RUBY_GEMINI_CHAT_MODEL` / `GEMINI_CHAT_MODEL` names are accepted as aliases.
 - `RUBY_GEMINI_FALLBACK_MODELS`: comma-separated alternatives tried if a request fails.
 
 Defaults are documented in `.env.example`. Availability depends on the models enabled for the configured Gemini API key.
