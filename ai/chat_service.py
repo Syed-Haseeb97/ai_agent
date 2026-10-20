@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import threading
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 MAX_MESSAGE_CHARS = 8000
@@ -24,7 +24,8 @@ class ChatService:
         self._lock = threading.RLock()
         self._conversations: Dict[str, List[Dict[str, str]]] = {}
 
-    def send(self, conversation_id: Any, message: Any) -> Dict[str, str]:
+    def send(self, conversation_id: Any, message: Any, *, screenshot: Optional[bytes] = None,
+             with_emotion: bool = False) -> Dict[str, str]:
         if not isinstance(message, str) or not message.strip():
             raise ValueError("Message must not be empty.")
         message = message.strip()
@@ -39,16 +40,29 @@ class ChatService:
         with self._lock:
             history = list(self._conversations.get(conversation_id, []))
             messages = [*history, {"role": "user", "content": message}]
-            answer = self.client.chat(messages, max_output_tokens=4096, timeout_seconds=60)
+            emotion = "neutral"
+            if with_emotion:
+                if not isinstance(screenshot, bytes) or not screenshot:
+                    raise ValueError("A screenshot is required for emotion-aware orb chat.")
+                answer, emotion = self.client.ask_with_screenshot_and_emotion(
+                    screenshot, message, history=history
+                )
+            else:
+                answer = self.client.chat(messages, max_output_tokens=4096, timeout_seconds=60)
             if not isinstance(answer, str) or not answer.strip():
                 raise RuntimeError("Ruby returned an empty chat response.")
-            updated = [*messages, {"role": "assistant", "content": answer.strip()}]
-            self._conversations[conversation_id] = updated[-MAX_HISTORY_MESSAGES:]
-            if len(self._conversations) > MAX_CONVERSATIONS:
-                oldest = next(iter(self._conversations))
-                if oldest != conversation_id:
+            # The legacy vision helper returns a friendly error string on provider failures.
+            # Do not persist that string as if it were a successful assistant answer.
+            failed = with_emotion and answer.startswith("Sorry")
+            if not failed:
+                updated = [*messages, {"role": "assistant", "content": answer.strip()}]
+                self._conversations[conversation_id] = updated[-MAX_HISTORY_MESSAGES:]
+                while len(self._conversations) > MAX_CONVERSATIONS:
+                    oldest = next((key for key in self._conversations if key != conversation_id), None)
+                    if oldest is None:
+                        break
                     self._conversations.pop(oldest, None)
-            return {"conversationId": conversation_id, "response": answer.strip()}
+            return {"conversationId": conversation_id, "response": answer.strip(), "emotion": emotion}
 
     def clear(self, conversation_id: Any) -> None:
         if isinstance(conversation_id, str):
