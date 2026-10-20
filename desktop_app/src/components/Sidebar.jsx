@@ -8,7 +8,10 @@ export function Sidebar({ active, setActive, state }) {
   const activeCount = state?.tasks?.filter(task => !['completed', 'failed', 'cancelled', 'timeout'].includes(task.status)).length;
   return (
     <aside className="sidebar">
-      <div className="brand"><RubyOrb /><div><strong>Ruby</strong><span>Agent Control Center</span></div></div>
+      <div className="brand">
+        <RubyOrb />
+        <div className="brand-wordmark"><strong>Ruby</strong></div>
+      </div>
       <div className="sidebar-label">Workspace</div>
       <nav>{navItems.map(([id, label]) => { const Icon = icons[id]; return <button key={id} className={`nav-item ${active === id ? 'active' : ''}`} onClick={() => setActive(id)}><Icon size={17} strokeWidth={1.8} /><span>{label}</span>{id === 'agents' && activeCount > 0 && <span className="nav-count">{activeCount}</span>}</button>; })}</nav>
       <div className="sidebar-spacer" />
