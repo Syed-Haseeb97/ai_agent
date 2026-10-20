@@ -381,3 +381,16 @@ nav { display: grid; gap: 3px; }
     animation: none !important;
   }
 }
+
+/* Reset legacy state selectors that targeted the old CSS sphere. */
+.ruby-orb-wrap.orb-thinking .ruby-liquid-art,
+.ruby-orb-wrap.orb-working .ruby-liquid-art,
+.ruby-orb-wrap.orb-success .ruby-liquid-art,
+.ruby-orb-wrap.orb-error .ruby-liquid-art {
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+.ruby-orb-wrap.orb-thinking .ruby-liquid-art { animation-name: ruby-liquid-float; }
+.ruby-orb-wrap.orb-working .ruby-liquid-art { animation-name: ruby-liquid-float; }
+.ruby-orb-wrap.orb-success .ruby-liquid-art { animation-name: ruby-liquid-float; }
