@@ -60,6 +60,8 @@ class FloatingButton(QWidget):
         self._response_ready: dict[int, threading.Event] = {}
         self._continuous_mode = False
         self._response_emotion = "neutral"
+        self._conversation_history: list[dict[str, str]] = []
+        self._conversation_history_lock = threading.Lock()
         self._mood_sync_timer = QTimer(self)
         self._mood_sync_timer.setInterval(2000)
         self._mood_sync_timer.timeout.connect(
@@ -112,6 +114,7 @@ class FloatingButton(QWidget):
         self.sig_error.connect(self._on_error)
         self.sig_finished.connect(self._on_finished)
         self.response_popup.submitted.connect(self.submit_text)
+        self.response_popup.history_cleared.connect(self._clear_conversation_history)
 
         self._init_tray()
         self._listener: VoiceListener | None = None
@@ -272,6 +275,18 @@ class FloatingButton(QWidget):
             self._interrupt_current()
         self._start_run(text)
 
+    def _clear_conversation_history(self):
+        with self._conversation_history_lock:
+            self._conversation_history.clear()
+
+    def _record_chat_turn(self, user_text: str, assistant_text: str):
+        with self._conversation_history_lock:
+            self._conversation_history.extend([
+                {"role": "user", "content": user_text},
+                {"role": "assistant", "content": assistant_text},
+            ])
+            del self._conversation_history[:-20]
+
     def _start_run(self,user_text):
         run_id=self._next_run(); self._busy=True; self._response_ready[run_id] = threading.Event(); self.status_popup.hide_popup(); self.update()
         if user_text:
@@ -304,6 +319,8 @@ class FloatingButton(QWidget):
 
             action=self.action_executor.try_execute(user_text)
             if action.handled:
+                if self._is_current(run_id):
+                    self._record_chat_turn(user_text, action.message)
                 self.sig_emotion.emit(run_id, "neutral")
                 self.sig_response.emit(run_id,action.message)
                 self._wait_for_response_ui(run_id)
@@ -318,8 +335,15 @@ class FloatingButton(QWidget):
             jpeg_bytes,_=capture_primary_screen()
             if not self._is_current(run_id): return
             if self._gemini is None: self._gemini=GeminiClient()
-            answer, emotion = self._gemini.ask_with_screenshot_and_emotion(jpeg_bytes,user_text)
+            with self._conversation_history_lock:
+                history = list(self._conversation_history)
+            answer, emotion = self._gemini.ask_with_screenshot_and_emotion(
+                jpeg_bytes, user_text, history=history
+            )
             if not self._is_current(run_id): return
+            # Avoid retaining a provider error as if it were a valid answer.
+            if not answer.startswith("Sorry"):
+                self._record_chat_turn(user_text, answer)
             self.sig_emotion.emit(run_id, emotion)
             self.sig_response.emit(run_id,answer)
             self._wait_for_response_ui(run_id)
