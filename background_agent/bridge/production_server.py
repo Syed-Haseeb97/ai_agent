@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 from typing import Callable, Optional
 
+from ai.chat_service import ChatService
 from ..actions import FS_KINDS
 from ..backends.local_tools import LocalToolBackend
 from ..gemini_planner import GeminiPlanner
@@ -56,6 +57,7 @@ def build_production_service(*, api_key: Optional[str] = None,
     return BridgeService.create(
         backend,
         lambda _task: GeminiPlanner(client),
+        chat_service=ChatService(client),
         policy=DefaultActionPolicy(),
         default_limits=TaskLimits(max_runtime_seconds=900, max_actions=50, max_turns=75,
                                  cancel_grace_seconds=2, cleanup_timeout_seconds=10),
