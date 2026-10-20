@@ -115,6 +115,9 @@ class BackendSupervisor {
       await this.stop();
       this.restarts = 0;
       await this.startWithKey(key);
+      if (this.state.status !== 'READY') {
+        throw new Error(this.state.error || this.state.message || 'Ruby could not start after validating the Gemini API key.');
+      }
       return true;
     } catch (error) {
       const safeMessage = error.message || 'Ruby could not configure Gemini.';
