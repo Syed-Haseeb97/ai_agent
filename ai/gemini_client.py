@@ -111,8 +111,9 @@ class GeminiClient:
                     self.model = model
                     if hasattr(self, "models") and index > 0:
                         self.models = [model, *(candidate for candidate in self.models if candidate is not model)]
-                        if hasattr(self, "model_names"):
-                            self.model_names = [getattr(model, "model_name", self.model_names[index] if index < len(self.model_names) else "fallback"), *(name for name in self.model_names if name != getattr(model, "model_name", None))]
+                        if hasattr(self, "model_names") and index < len(self.model_names):
+                            selected_name = self.model_names.pop(index)
+                            self.model_names.insert(0, selected_name)
                     return answer.strip()
                 errors.append(f"model {index + 1} returned an empty response")
             except Exception as exc:
