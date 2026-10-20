@@ -21,7 +21,7 @@ The Electron HTTP client omits Origin, as it is a native host request; it still 
 
 - `GET /v1/health`
 - `GET /v1/state`
-- `POST /v1/tasks` with `{"goal":"..."}`
+- `POST /v1/tasks` with `{"goal":"...","executionMode":"task_doing"|"background_task"|"cursor_control"}` (`executionMode` defaults to `task_doing`)
 - `GET /v1/tasks`
 - `GET /v1/tasks/{id}`
 - `POST /v1/tasks/{id}/cancel`
@@ -37,7 +37,20 @@ The client authenticates with a first frame containing the bearer token and opti
 
 ## Production action boundary
 
-`GeminiPlanner` returns strict JSON decisions as `Action` or `Finish`. It cannot execute anything. Production advertises only workspace-confined filesystem actions to the planner; the worker still checks capabilities and `DefaultActionPolicy` before execution. Deletes and overwrites require one-time approval through the existing broker. Process/shell, browser, and GUI actions are disabled. GUI remains unsupported until an isolated Windows Sandbox/VM backend exists; F16 and the separate `WindowsActionExecutor` are not invoked by the bridge.
+`GeminiPlanner` returns strict JSON decisions as `Action` or `Finish`. It cannot execute anything. Production advertises only workspace-confined filesystem actions to the planner; the worker still checks capabilities and `DefaultActionPolicy` before execution. Deletes and overwrites require one-time approval through the existing broker. Process/shell, browser, and GUI actions are disabled inside the managed pipeline. GUI remains unsupported there until an isolated Windows Sandbox/VM backend exists.
+
+## Execution routing
+
+`POST /v1/tasks` is a router. `executionMode` selects the existing entry point and is echoed in the task metadata (`execution_mode`, `execution_environment`):
+
+| `executionMode` | Handler | Response |
+|---|---|---|
+| `task_doing` (default) | Existing managed task pipeline (`BackgroundTaskManager`) | `201 Created` |
+| `background_task` | Same managed pipeline, tagged as background | `202 Accepted` |
+| `cursor_control` | Ruby's F16 `AutonomousAgent` loop on a daemon thread | `202 Accepted` |
+
+`cursor_control` is the only mode that drives the real desktop (PyAutoGUI). It deliberately delegates to F16 without reimplementing it; the cursor companion window is not attached in bridge mode. Cursor-control task snapshots also include the latest normalized `cursor_target` (`x`/`y` in 0-999) plus action progress messages so the desktop orb can track what F16 is doing. The managed pipeline never gains mouse/keyboard/screen-control capability, so `background_task` still holds the package's isolation guarantee.
+
 
 ## Tests
 

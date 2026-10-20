@@ -16,7 +16,7 @@ from .service import BridgeService
 
 
 def create_app(service: BridgeService):
-    from fastapi import Depends, FastAPI, Request, WebSocket
+    from fastapi import Depends, FastAPI, Request, Response, WebSocket
     from fastapi.exceptions import RequestValidationError
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
@@ -24,6 +24,7 @@ def create_app(service: BridgeService):
 
     class SubmitBody(BaseModel):
         goal: str
+        executionMode: Optional[str] = "task_doing"
 
     class ConfirmBody(BaseModel):
         approved: bool
@@ -59,8 +60,10 @@ def create_app(service: BridgeService):
         return service.state()
 
     @app.post("/v1/tasks", status_code=201, dependencies=auth)
-    def submit(body: SubmitBody) -> Any:
-        return service.submit_task(body.goal)
+    def submit(body: SubmitBody, response: Response) -> Any:
+        submission = service.submit(body.goal, body.executionMode)
+        response.status_code = submission.http_status
+        return submission.task
 
     @app.get("/v1/tasks", dependencies=auth)
     def list_tasks(status: Optional[str] = None, limit: int = 100) -> Any:

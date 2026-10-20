@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Clock3, FolderKanban, History, MessageSquare, Settings, Sparkles, Square, Check, X, RefreshCw } from 'lucide-react';
 import { Header } from './components/Header';
 import { RubyOrb } from './components/RubyOrb';
+import { ExecutionModeSelector } from './components/ExecutionModeSelector';
 
 const terminal = new Set(['completed', 'failed', 'cancelled', 'timeout']);
 const label = (s = 'unknown') => s.replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -41,10 +42,10 @@ function Confirmations({ confirmations = [], refresh }) {
   return <section className="section"><div className="section-heading"><div><span className="eyebrow">ACTION REVIEW</span><h2>Ruby needs your approval</h2></div></div>{confirmations.map(c => <article className="confirmation-card" key={c.id}><strong>{c.summary}</strong><p>{c.reason}</p><pre>{typeof c.details === 'string' ? c.details : JSON.stringify(c.details, null, 2)}</pre><div><button className="new-button" disabled={busyId === c.id} onClick={() => decide(c, true)}><Check size={14} /> Approve once</button><button className="stop-button" disabled={busyId === c.id} onClick={() => decide(c, false)}><X size={14} /> Deny</button></div></article>)}</section>;
 }
 
-export function HomeView({ setActive, state, error, refresh }) {
+export function HomeView({ setActive, state, error, refresh, executionMode, setExecutionMode }) {
   const tasks = state?.tasks || [];
   const activeTasks = tasks.filter(t => !terminal.has(t.status)).slice(0, 2);
-  return <><Header title="Ruby workspace" /><Status connected={Boolean(state) && !error} error={error} /><section className="hero-panel"><div><div className="hero-kicker"><Sparkles size={15} /> Local assistant</div><h2>What should Ruby work on?</h2><p>Submit a task to the Python assistant. Ruby runs it through the local bridge and reports progress here.</p></div><div className="quick-input"><span>Describe a task for Ruby…</span><button onClick={() => setActive('chat')}><MessageSquare size={17} /> New task</button></div></section><Confirmations confirmations={state?.confirmations} refresh={refresh} /><section className="section"><div className="section-heading"><div><span className="eyebrow">LIVE FROM PYTHON</span><h2>Active tasks</h2></div><button className="text-button" onClick={() => setActive('agents')}>View all →</button></div><div className="agent-grid">{activeTasks.length ? activeTasks.map(t => <TaskCard key={t.id} task={t} refresh={refresh} />) : <p className="empty-state">No active tasks. Start one to see Ruby's live status here.</p>}</div></section></>;
+  return <><Header title="Ruby workspace" /><Status connected={Boolean(state) && !error} error={error} /><section className="hero-panel"><div><div className="hero-kicker"><Sparkles size={15} /> Local assistant</div><h2>What should Ruby work on?</h2><p>Submit a task to the Python assistant. Ruby runs it through the local bridge and reports progress here.</p></div><div className="quick-input"><span>Describe a task for Ruby…</span><button onClick={() => setActive('chat')}><MessageSquare size={17} /> New task</button></div><ExecutionModeSelector value={executionMode} onChange={setExecutionMode} /></section><Confirmations confirmations={state?.confirmations} refresh={refresh} /><section className="section"><div className="section-heading"><div><span className="eyebrow">LIVE FROM PYTHON</span><h2>Active tasks</h2></div><button className="text-button" onClick={() => setActive('agents')}>View all →</button></div><div className="agent-grid">{activeTasks.length ? activeTasks.map(t => <TaskCard key={t.id} task={t} refresh={refresh} />) : <p className="empty-state">No active tasks. Start one to see Ruby's live status here.</p>}</div></section></>;
 }
 
 export function AgentsView({ state, error, refresh, history = false }) {
@@ -53,7 +54,7 @@ export function AgentsView({ state, error, refresh, history = false }) {
   return <><Header title={history ? 'Task history' : 'Ruby tasks'} /><Status connected={Boolean(state) && !error} error={error} /><div className="canvas-toolbar"><div><span className="eyebrow">PYTHON ASSISTANT · LOCAL BRIDGE</span><p>{history ? 'Completed and stopped tasks reported by Ruby.' : 'Live task states and results from the Python assistant.'}</p></div><button className="ghost-button" onClick={refresh}><RefreshCw size={13} /> Refresh</button></div><Confirmations confirmations={state?.confirmations} refresh={refresh} /><div className="agent-grid wide">{shown.length ? shown.map(t => <TaskCard key={t.id} task={t} refresh={refresh} />) : <p className="empty-state">{state ? 'No tasks yet.' : 'Waiting for the Python bridge to connect.'}</p>}</div></>;
 }
 
-export function ChatView({ state, error, refresh }) {
+export function ChatView({ state, error, refresh, executionMode, setExecutionMode }) {
   const [goal, setGoal] = useState('');
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState('');
@@ -61,11 +62,11 @@ export function ChatView({ state, error, refresh }) {
     event.preventDefault();
     if (!goal.trim() || !window.rubyDesktop?.bridge) return;
     setSending(true); setMessage('');
-    try { await window.rubyDesktop.bridge.submitTask(goal); setGoal(''); setMessage('Task submitted to Ruby.'); await refresh(); }
+    try { await window.rubyDesktop.bridge.submitTask({ goal, executionMode }); setGoal(''); setMessage('Task submitted to Ruby.'); await refresh(); }
     catch (e) { setMessage(e.message || 'Could not submit the task.'); }
     finally { setSending(false); }
   };
-  return <><Header title="New task" /><Status connected={Boolean(state) && !error} error={error} /><div className="chat-surface"><div className="chat-empty"><RubyOrb /><h2>Give Ruby a task</h2><p>This sends work to the Python assistant through the localhost bridge. The task panel shows progress, approvals, outputs, and errors.</p></div><form className="chat-input task-compose" onSubmit={submit}><textarea aria-label="Task for Ruby" maxLength={4000} placeholder="Describe what Ruby should do…" value={goal} onChange={e => setGoal(e.target.value)} /><button type="submit" disabled={sending || !goal.trim() || !state || Boolean(error)}><MessageSquare size={16} /> {sending ? 'Sending…' : 'Start task'}</button></form>{message && <p className="bridge-message">{message}</p>}</div></>;
+  return <><Header title="New task" /><Status connected={Boolean(state) && !error} error={error} /><div className="chat-surface"><div className="chat-empty"><RubyOrb /><h2>Give Ruby a task</h2><p>This sends work to the Python assistant through the localhost bridge. The task panel shows progress, approvals, outputs, and errors.</p></div><form className="chat-input task-compose" onSubmit={submit}><div className="task-compose-row"><textarea aria-label="Task for Ruby" maxLength={4000} placeholder="Describe what Ruby should do…" value={goal} onChange={e => setGoal(e.target.value)} /><button className="task-submit" type="submit" disabled={sending || !goal.trim() || !state || Boolean(error)}><MessageSquare size={16} /> {sending ? 'Sending…' : 'Start task'}</button></div><ExecutionModeSelector value={executionMode} onChange={setExecutionMode} /></form>{message && <p className="bridge-message">{message}</p>}</div></>;
 }
 
 export function Placeholder({ title, eyebrow, description, icon: Icon }) {

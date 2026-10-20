@@ -8,9 +8,11 @@ your computer. The Electron shell consumes this package through the authenticate
 > The only backend shipped here (`LocalToolBackend`) has **no mouse/keyboard/screen-control
 > capability at all**. GUI work returns `GUI_ISOLATION_REQUIRED` instead of touching your desktop.
 
-This package does **not** import, modify, wrap or simulate F16 / Live Operator. Its production
-Gemini adapter imports the repository's existing `ai.gemini_client.GeminiClient`; the bridge does
-not call F16 or the separate `WindowsActionExecutor`.
+This package itself does **not** modify or simulate F16 / Live Operator. Its production
+Gemini adapter imports the repository's existing `ai.gemini_client.GeminiClient`. The bridge
+routes `background_task` and `task_doing` through this package's managed pipeline; only an
+explicit `cursor_control` submission delegates to F16's existing `AutonomousAgent` loop, and
+that mode is the one that operates the real desktop.
 
 ## Honest status
 

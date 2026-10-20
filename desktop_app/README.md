@@ -57,12 +57,24 @@ Actions Windows workflow runs this same packaging path. The installer must be te
 clean Windows machine before release; a successful local package build alone does not prove
 first-run behavior on a machine without developer tools.
 
+## Window and orb behavior
+
+Ruby opens the full Control Center. Minimizing or closing it collapses to a small
+always-on-top orb; clicking the orb restores the Control Center. Electron's main process
+polls the loopback bridge and forwards task state, progress, and execution-mode changes to
+both renderers. The orb follows that state: it thinks while managed tasks run, turns cyan
+and tracks F16's pointer target during `cursor_control`, flashes green on completion, turns
+red after an error or cancellation, then returns to idle. Orb clicks remain active during
+a task.
+
 ## Runtime boundary
 
-The production path is Electron → authenticated loopback bridge → `GeminiPlanner` → existing
-policy and filesystem actions → verification. Destructive file actions and overwrites require
-approval. Process/shell, browser, and GUI actions remain disabled in this task interface. The
-legacy voice assistant and F16 path are separate and are not started by this desktop app.
+The production path is Electron → authenticated loopback bridge → task router. `task_doing`
+and `background_task` use the managed `GeminiPlanner` / filesystem action pipeline.
+`cursor_control` explicitly delegates to the existing F16 autonomous agent and is the only
+mode that controls the real desktop. Destructive file actions and overwrites require
+approval. Process/shell, browser, and GUI actions remain disabled inside the managed
+pipeline. The legacy voice assistant is separate and is not started by this desktop app.
 
 Run the deterministic checks from the repository root and desktop directory:
 
