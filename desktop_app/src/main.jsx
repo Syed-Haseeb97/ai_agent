@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { createRoot } from 'react-dom/client';
 import { Home, MessageSquare, Bot, History, Settings, Minus, Square, X } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { RubyOrb } from './components/RubyOrb';

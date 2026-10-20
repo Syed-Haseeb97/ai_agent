@@ -52,6 +52,20 @@ function rendererPreferences() {
   };
 }
 
+function logRendererDiagnostics(win, name) {
+  win.webContents.on('did-fail-load', (_event, errorCode, _errorDescription, _validatedURL, isMainFrame) => {
+    console.error(`[Electron] ${name} renderer failed to load (code ${errorCode}, main frame: ${isMainFrame})`);
+  });
+  win.webContents.on('console-message', (details) => {
+    if (details.level === 'error') {
+      console.error(`[Electron] ${name} renderer console error at ${details.sourceId}:${details.lineNumber}`);
+    }
+  });
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`[Electron] ${name} renderer process gone (reason: ${details.reason}, exit code: ${details.exitCode})`);
+  });
+}
+
 function loadRenderer(win, hash) {
   if (app.isPackaged) {
     const entry = path.join(__dirname, '..', 'dist', 'index.html');
@@ -85,6 +99,7 @@ function createMainWindow() {
   });
 
   mainWindow.center();
+  logRendererDiagnostics(mainWindow, 'main');
   mainWindow.once('ready-to-show', () => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
   });
@@ -119,6 +134,7 @@ function createOrbWindow() {
     webPreferences: rendererPreferences(),
   });
 
+  logRendererDiagnostics(orbWindow, 'orb');
   orbWindow.setAlwaysOnTop(true, 'floating');
   orbWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   orbWindow.on('close', (event) => {
