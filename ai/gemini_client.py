@@ -96,6 +96,7 @@ class GeminiClient:
     def _generate(self, contents, *, temperature: float, max_output_tokens: int,
                   timeout_seconds: float) -> str:
         errors = []
+        failures = []
         models = self._available_models()
         for index, model in enumerate(models):
             try:
@@ -110,9 +111,12 @@ class GeminiClient:
                     return answer.strip()
                 errors.append(f"model {index + 1} returned an empty response")
             except Exception as exc:
+                failures.append(exc)
                 errors.append(f"model {index + 1}: {type(exc).__name__}: {exc}")
         if not models:
             raise RuntimeError("No Gemini models are configured.")
+        if len(models) == 1 and failures:
+            raise failures[0]
         raise RuntimeError("All configured Gemini models failed: " + "; ".join(errors)) from None
 
     def generate_text(self, prompt: str, *, max_output_tokens: int = 4096,
