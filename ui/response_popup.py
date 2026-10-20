@@ -20,6 +20,7 @@ from ui.liquid_blob import LiquidBlob, Mood
 
 class ResponsePopup(QWidget):
     submitted = pyqtSignal(str)
+    history_cleared = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -380,6 +381,7 @@ class ResponsePopup(QWidget):
 
     def clear_history(self) -> None:
         self.history.clear()
+        self.history_cleared.emit()
 
     def hide_popup(self) -> None:
         self._dismiss_on_deactivate = False
