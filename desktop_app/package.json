@@ -10,9 +10,12 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test:electron": "node --test electron/*.test.cjs",
+    "backend:build": "node scripts/build-backend.cjs",
+    "smoke:backend:packaged": "node scripts/smoke-packaged-backend.cjs",
     "desktop:dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && electron .\"",
-    "desktop:pack": "npm run build && electron-builder --dir",
-    "desktop:dist": "npm run build && electron-builder --win nsis"
+    "desktop:pack": "npm run backend:build && npm run build && electron-builder --dir",
+    "desktop:dist": "npm run backend:build && npm run build && electron-builder --win nsis"
   },
   "dependencies": {
     "lucide-react": "1.59.0",
@@ -30,7 +33,8 @@
     "appId": "com.ruby.agentdesktop",
     "productName": "Ruby Agent",
     "directories": { "output": "release" },
-    "files": ["dist/**/*", "electron/**/*", "package.json"],
+    "files": ["dist/**/*", "electron/**/*", "package.json", "!electron/**/*.test.cjs"],
+    "extraResources": [{ "from": "backend-dist/ruby-backend", "to": "backend", "filter": ["**/*"] }],
     "win": { "target": ["nsis"] },
     "nsis": {
       "oneClick": false,

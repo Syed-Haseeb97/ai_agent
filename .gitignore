@@ -1,6 +1,11 @@
 .env
 .env.local
 .ruby-bridge-token
+desktop_app/backend-dist/
+desktop_app/.pyinstaller-work/
+desktop_app/*.spec
+desktop_app/.electron-dist-pack/
+desktop_app/release/
 .venv/
 venv/
 __pycache__/

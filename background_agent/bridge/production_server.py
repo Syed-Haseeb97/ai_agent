@@ -52,13 +52,14 @@ def build_production_service(*, api_key: Optional[str] = None,
 
     root = Path(workspace or default_workspace()).expanduser().resolve()
     backend = backend_factory(root, enable_browser=False, allowed_kinds=FS_KINDS)
+    bridge_token = token if token is not None else os.getenv("RUBY_BRIDGE_TOKEN")
     return BridgeService.create(
         backend,
         lambda _task: GeminiPlanner(client),
         policy=DefaultActionPolicy(),
         default_limits=TaskLimits(max_runtime_seconds=900, max_actions=50, max_turns=75,
                                  cancel_grace_seconds=2, cleanup_timeout_seconds=10),
-        token=token,
+        token=bridge_token,
     )
 
 
@@ -70,10 +71,22 @@ def main(argv=None) -> int:
                         help="root for per-task workspaces (default: %%LOCALAPPDATA%%/Ruby/BackgroundWorkspace)")
     parser.add_argument("--bridge-env-file", type=Path, default=ROOT / "desktop_app" / ".env.local",
                         help="host-only URL/token file read by Electron (default: desktop_app/.env.local)")
+    parser.add_argument("--managed", action="store_true",
+                        help="Electron owns this process; report readiness on stdout without writing credentials to disk")
+    parser.add_argument("--validate-gemini", action="store_true",
+                        help="validate GEMINI_API_KEY with a small Gemini request, then exit")
+    parser.add_argument("--shutdown-file", type=Path, default=None,
+                        help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.validate_gemini:
+        try:
+            from ai.gemini_client import GeminiClient
+            GeminiClient().generate_text("Reply with the single word OK.", max_output_tokens=8, timeout_seconds=15)
+            return 0
+        except Exception:
+            print("Gemini could not validate this key. Check the key and network connection.", file=sys.stderr)
+            return 3
     try:
-        from dotenv import load_dotenv
-        load_dotenv(ROOT / ".env", override=False)
         service = build_production_service(workspace=args.workspace)
         from .server import BridgeServer
         server = BridgeServer(service, host=args.host, port=args.port)
@@ -85,13 +98,18 @@ def main(argv=None) -> int:
     try:
         service.start()
         server.start()
-        write_bridge_env(args.bridge_env_file, server.base_url, service.auth.token)
-        print(f"Ruby Gemini bridge listening at {server.base_url}")
-        print(f"Workspace: {args.workspace or default_workspace()}")
-        print(f"Electron host config: {args.bridge_env_file}")
-        print("The bearer token was written to the host-only config file; it is not printed.")
+        if args.managed:
+            print(f"RUBY_BRIDGE_READY={server.base_url}", flush=True)
+        else:
+            write_bridge_env(args.bridge_env_file, server.base_url, service.auth.token)
+            print(f"Ruby Gemini bridge listening at {server.base_url}")
+            print(f"Workspace: {args.workspace or default_workspace()}")
+            print(f"Electron host config: {args.bridge_env_file}")
+            print("The bearer token was written to the host-only config file; it is not printed.")
         started = True
         while True:
+            if args.shutdown_file and args.shutdown_file.exists():
+                break
             time.sleep(1)
     except KeyboardInterrupt:
         pass

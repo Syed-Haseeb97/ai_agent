@@ -87,6 +87,18 @@ class ProductionRuntimeTests(unittest.TestCase):
         finally:
             service.shutdown()
 
+    def test_host_supplied_bridge_token_is_used_when_managed(self):
+        with patch.dict(os.environ, {"RUBY_BRIDGE_TOKEN": "host-controlled-runtime-token"}):
+            service = build_production_service(
+                api_key="unit-test-key", workspace=Path("workspace"),
+                gemini_client_factory=FakeGeminiClient,
+                backend_factory=lambda root, **kwargs: LocalToolBackend(root, **kwargs),
+            )
+        try:
+            self.assertEqual(service.auth.token, "host-controlled-runtime-token")
+        finally:
+            service.shutdown()
+
     def test_workspace_default_uses_local_app_data(self):
         self.assertEqual(default_workspace({"LOCALAPPDATA": "C:/Users/test/AppData/Local"}),
                          Path("C:/Users/test/AppData/Local/Ruby/BackgroundWorkspace"))

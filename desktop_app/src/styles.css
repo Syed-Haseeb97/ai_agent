@@ -125,4 +125,17 @@ nav { display: grid; gap: 3px; }
 .ruby-status-dot { position: absolute; right: -1px; bottom: 1px; margin: 0; border: 2px solid #0d1016; width: 8px; height: 8px; border-radius: 50%; background: #9b8cff; box-shadow: 0 0 10px rgba(155,140,255,.8); }
 .floating-ruby { position: fixed; right: 24px; bottom: 22px; display: grid; place-items: center; width: 52px; height: 52px; border: 1px solid #292e38; border-radius: 14px; background: rgba(15,17,23,.92); box-shadow: 0 12px 35px rgba(0,0,0,.4); backdrop-filter: blur(12px); }
 .floating-ruby .ruby-orb-wrap { transform: scale(1.25); }
+.runtime-panel { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; min-height: 490px; padding: 36px; border: 1px solid #292e38; border-radius: 13px; background: linear-gradient(135deg, rgba(32,35,47,.96), rgba(17,19,27,.96)); }
+.runtime-indicator { width: 10px; height: 10px; margin-bottom: 22px; border-radius: 50%; background: #9b8cff; box-shadow: 0 0 14px #9b8cff88; animation: ruby-pulse 1.4s ease-in-out infinite; }
+.runtime-panel .eyebrow { color: #9f94ff; font-size: 10px; letter-spacing: .12em; }
+.runtime-panel h2 { margin: 12px 0 7px; font-size: 23px; }
+.runtime-panel > p { max-width: 540px; color: #858d9c; font-size: 12px; line-height: 1.6; }
+.setup-panel form { display: flex; flex-direction: column; gap: 9px; width: min(440px, 100%); margin-top: 20px; }
+.setup-panel label { color: #abb1bf; font-size: 11px; }
+.setup-panel input { height: 40px; padding: 0 12px; border: 1px solid #343a47; border-radius: 7px; outline: 0; background: #0d1016; color: #e8ebf2; font: inherit; font-size: 12px; }
+.setup-panel input:focus { border-color: #8175d5; }
+.setup-panel .setup-button { min-height: 36px; margin-top: 14px; padding: 0 13px; border-radius: 7px; background: #29253d; color: #d1cbff; font-size: 11px; }
+.setup-panel .setup-button:disabled { opacity: .5; cursor: not-allowed; }
+.runtime-panel .runtime-message { color: #e09a84; }
+@keyframes ruby-pulse { 50% { opacity: .45; transform: scale(.84); } }
 @media (max-width: 1180px) { .agent-grid.wide { grid-template-columns: repeat(2, minmax(0, 1fr)); } .content { padding-left: 30px; padding-right: 30px; } }
