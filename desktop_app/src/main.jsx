@@ -78,7 +78,7 @@ function App() {
 function OrbWindow() {
   return (
     <div className="app-root is-orb">
-      <RubyOrb label="Open Ruby Agent Control Center" onClick={() => window.rubyDesktop?.show()} />
+      <RubyOrb label="Open Ruby Agent Control Center" onClick={() => window.rubyDesktop?.show()} draggable />
     </div>
   );
 }

@@ -4,6 +4,22 @@ export const SUCCESS_HOLD_MS = 2200;
 export const ERROR_HOLD_MS = 3000;
 const RECENT_COMPLETION_MS = 5000;
 
+export const ORB_APPEARANCE = Object.freeze({
+  idle: Object.freeze({ accent: '#8b5cf6', secondary: '#2563eb', glow: '139, 92, 246' }),
+  thinking: Object.freeze({ accent: '#a78bfa', secondary: '#4f46e5', glow: '167, 139, 250' }),
+  working: Object.freeze({ accent: '#22d3ee', secondary: '#2563eb', glow: '34, 211, 238' }),
+  success: Object.freeze({ accent: '#34d399', secondary: '#059669', glow: '52, 211, 153' }),
+  error: Object.freeze({ accent: '#ff526b', secondary: '#b91235', glow: '255, 82, 107' }),
+});
+
+export function orbAppearance(state) {
+  return ORB_APPEARANCE[state] || ORB_APPEARANCE.idle;
+}
+
+export function orbMotionMode(prefersReducedMotion) {
+  return prefersReducedMotion ? 'reduced' : 'full';
+}
+
 export const isActiveTask = (task) => Boolean(task) && ACTIVE_STATUSES.includes(task.status);
 export const isTerminalTask = (task) => Boolean(task) && TERMINAL_STATUSES.includes(task.status);
 

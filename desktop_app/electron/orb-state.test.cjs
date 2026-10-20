@@ -66,3 +66,20 @@ test('idle is the fallback when there is no work or transient', async () => {
   assert.match(orbStateLabel('idle'), /idle/i);
   assert.match(orbStateLabel('working'), /desktop/i);
 });
+
+test('supported orb states expose distinct visual palettes', async () => {
+  const { ORB_APPEARANCE, orbAppearance } = await load();
+  assert.deepEqual(Object.keys(ORB_APPEARANCE), ['idle', 'thinking', 'working', 'success', 'error']);
+  assert.equal(orbAppearance('idle').accent, '#8b5cf6');
+  assert.equal(orbAppearance('thinking').accent, '#a78bfa');
+  assert.equal(orbAppearance('working').accent, '#22d3ee');
+  assert.equal(orbAppearance('success').accent, '#34d399');
+  assert.equal(orbAppearance('error').accent, '#ff526b');
+  assert.equal(orbAppearance('unsupported'), ORB_APPEARANCE.idle);
+});
+
+test('reduced motion preference selects the non-animated renderer mode', async () => {
+  const { orbMotionMode } = await load();
+  assert.equal(orbMotionMode(false), 'full');
+  assert.equal(orbMotionMode(true), 'reduced');
+});
