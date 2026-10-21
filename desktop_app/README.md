@@ -67,7 +67,12 @@ polls the loopback bridge and forwards task state, progress, and execution-mode 
 both renderers. The orb follows that state: it thinks while managed tasks run, turns cyan
 and tracks F16's pointer target during `cursor_control`, flashes green on completion, turns
 red after an error or cancellation, then returns to idle. Orb clicks remain active during
-a task.
+a task. Drag the orb to reposition it; a short click restores the Control Center, while a
+drag release only finishes moving the window. Its animated liquid artwork and state palette
+are rendered in the shared React UI for both development and packaged builds. Reduced-motion
+preferences disable its continuous animation. The Electron bridge currently maps idle,
+thinking, cursor-control working, success, and error; the legacy Python assistant's
+listening, speaking, and individual emotional expressions are not wired into this app.
 
 ## Runtime boundary
 

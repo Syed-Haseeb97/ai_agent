@@ -12,6 +12,11 @@ contextBridge.exposeInMainWorld('rubyDesktop', Object.freeze({
   show: () => ipcRenderer.send('ruby:window:show'),
   toggleMaximize: () => ipcRenderer.send('ruby:window:toggle-maximize'),
   close: () => ipcRenderer.send('ruby:window:close'),
+  orbDrag: Object.freeze({
+    start: () => ipcRenderer.send('ruby:orb:drag-start'),
+    move: () => ipcRenderer.send('ruby:orb:drag-move'),
+    end: () => ipcRenderer.send('ruby:orb:drag-end'),
+  }),
   runtime: Object.freeze({
     getState: () => ipcRenderer.invoke('ruby:runtime:state'),
     configureGeminiFromClipboard: () => ipcRenderer.invoke('ruby:runtime:configure-key-from-clipboard'),

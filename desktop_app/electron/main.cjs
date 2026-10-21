@@ -4,9 +4,15 @@ const { pathToFileURL } = require('node:url');
 const { registerClipboardKeyHandler } = require('./clipboard-key.cjs');
 const { BackendSupervisor } = require('./backend-supervisor.cjs');
 const { BridgeEventPump } = require('./bridge-events.cjs');
+const {
+  ORB_MARGIN,
+  ORB_SIZE,
+  collapseOrbWindow,
+  hideOrbForExpansion,
+  initialOrbBounds,
+  registerOrbDragHandlers,
+} = require('./orb-window.cjs');
 
-const ORB_SIZE = 110;
-const ORB_MARGIN = 18;
 const CONTROL_WIDTH = 1240;
 const CONTROL_HEIGHT = 820;
 const CONTROL_MIN_WIDTH = 850;
@@ -34,13 +40,7 @@ function orbBounds() {
   const display = mainWindow && !mainWindow.isDestroyed()
     ? screen.getDisplayMatching(mainWindow.getBounds())
     : screen.getPrimaryDisplay();
-  const { x, y, width, height } = display.workArea;
-  return {
-    x: Math.round(x + width - ORB_SIZE - ORB_MARGIN),
-    y: Math.round(y + height - ORB_SIZE - ORB_MARGIN),
-    width: ORB_SIZE,
-    height: ORB_SIZE,
-  };
+  return initialOrbBounds(display.workArea, ORB_SIZE, ORB_MARGIN);
 }
 
 function rendererPreferences() {
@@ -118,9 +118,9 @@ function createMainWindow() {
   loadRenderer(mainWindow);
 }
 
-function createOrbWindow() {
+function createOrbWindow(bounds = orbBounds()) {
   orbWindow = new BrowserWindow({
-    ...orbBounds(),
+    ...bounds,
     minWidth: ORB_SIZE,
     minHeight: ORB_SIZE,
     resizable: false,
@@ -142,12 +142,15 @@ function createOrbWindow() {
     if (quitting) return;
     event.preventDefault();
   });
-  orbWindow.on('closed', () => { orbWindow = null; });
+  orbWindow.on('closed', () => {
+    orbWindow = null;
+    orbDragHandlers.reset();
+  });
   loadRenderer(orbWindow, 'orb');
 }
 
 function showMainWindow() {
-  if (orbWindow && !orbWindow.isDestroyed()) orbWindow.hide();
+  hideOrbForExpansion(orbWindow);
   if (!mainWindow || mainWindow.isDestroyed()) {
     createMainWindow();
     return;
@@ -158,17 +161,19 @@ function showMainWindow() {
 }
 
 function collapseToOrb() {
-  if (!orbWindow || orbWindow.isDestroyed()) {
-    createOrbWindow();
-    orbWindow.once('ready-to-show', () => {
-      if (orbWindow && !orbWindow.isDestroyed()) orbWindow.showInactive();
-    });
-  } else {
-    orbWindow.setBounds(orbBounds());
-    orbWindow.showInactive();
-  }
+  orbWindow = collapseOrbWindow({
+    orbWindow,
+    createOrbWindow,
+    initialBounds: orbBounds(),
+  });
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
 }
+
+const orbDragHandlers = registerOrbDragHandlers({
+  ipcMain,
+  screen,
+  getOrbWindow: () => orbWindow,
+});
 
 ipcMain.on('ruby:window:minimize', () => collapseToOrb());
 ipcMain.on('ruby:window:close', () => collapseToOrb());
@@ -246,5 +251,6 @@ app.on('before-quit', (event) => {
     return;
   }
   bridgeEvents?.stop();
+  orbDragHandlers.dispose();
   for (const channel of ['ruby:bridge:state', 'ruby:bridge:chat', 'ruby:bridge:submit', 'ruby:bridge:cancel', 'ruby:bridge:confirm']) ipcMain.removeHandler(channel);
 });

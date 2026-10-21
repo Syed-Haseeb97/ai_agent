@@ -126,45 +126,76 @@ nav { display: grid; gap: 3px; }
 .hero-panel .execution-modes { margin-top: 18px; }
 @media (max-width: 720px) { .execution-mode-hint { display: none; } }
 .bridge-message { margin: 0 16px 14px; color: #9d95dc; font-size: 10px; }
-.ruby-trigger { display: grid; place-items: center; width: 100%; height: 100%; padding: 0; border-radius: 50%; background: transparent; outline: none; }
+.ruby-trigger { display: grid; place-items: center; width: 100%; height: 100%; padding: 0; border-radius: 50%; background: transparent; outline: none; touch-action: none; user-select: none; }
 .ruby-trigger:focus-visible { box-shadow: 0 0 0 2px rgba(155,140,255,.65); }
-.ruby-trigger:hover .ruby-orb { transform: scale(1.06); box-shadow: 0 0 28px rgba(125,112,255,.28), inset 0 0 12px rgba(255,255,255,.05); }
-.ruby-orb-wrap { position: relative; width: 34px; height: 34px; flex: 0 0 34px; }
-.ruby-orb { position: absolute; inset: 0; border-radius: 48% 52% 50% 50%; background: radial-gradient(circle at 38% 30%, #22252d 0 8%, #080a0f 45%, #05060a 100%); border: 1px solid #303542; box-shadow: 0 0 22px rgba(125,112,255,.18), inset 0 0 12px rgba(255,255,255,.04); transition: transform .18s ease, box-shadow .18s ease; }
-.ruby-eye { position: absolute; top: 12px; width: 4px; height: 6px; border-radius: 50%; background: #f0efff; box-shadow: 0 0 6px rgba(230,226,255,.6); }
-.ruby-eye.left { left: 10px; }.ruby-eye.right { right: 10px; }
-.ruby-status-dot { position: absolute; right: -1px; bottom: 1px; margin: 0; border: 2px solid #0d1016; width: 8px; height: 8px; border-radius: 50%; background: #9b8cff; box-shadow: 0 0 10px rgba(155,140,255,.8); }
+.ruby-trigger:hover .ruby-orb { filter: drop-shadow(0 0 9px rgba(var(--orb-glow), .75)); }
+.ruby-orb-wrap { position: relative; width: 34px; height: 34px; flex: 0 0 34px; --orb-gaze-x: 0px; --orb-gaze-y: 0px; }
+.ruby-orb { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 0 5px rgba(var(--orb-glow), .5)); transition: filter .3s ease; }
+.orb-body { transform-box: fill-box; transform-origin: center; animation: ruby-body-breathe 3.8s ease-in-out infinite; }
+.orb-plasma { opacity: .9; mix-blend-mode: screen; transform-box: fill-box; transform-origin: center; animation: ruby-plasma-flow 8s linear infinite; }
+.orb-plasma-stream { fill: none; stroke: var(--orb-accent); stroke-linecap: round; stroke-width: 8; }
+.orb-plasma-stream.stream-one { opacity: .65; }
+.orb-plasma-stream.stream-two { opacity: .45; stroke-width: 5; }
+.orb-plasma-cloud { opacity: .48; }
+.orb-core-glint { fill: #fff; opacity: .24; filter: blur(4px); }
+.orb-glass-sheen { fill: #fff; opacity: .23; }
+.orb-face { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.orb-brow { stroke: rgba(30, 18, 58, .7); stroke-width: 2.1; }
+.orb-eye { transform: translate(var(--orb-gaze-x), var(--orb-gaze-y)); transform-box: fill-box; transform-origin: center; }
+.orb-eye-lid { transform-box: fill-box; transform-origin: center; animation: ruby-idle-blink 4.6s ease-in-out infinite; }
+.orb-eye-white { fill: #fff8ff; stroke: rgba(70, 41, 101, .62); stroke-width: 1; }
+.orb-pupil { fill: #21133f; transform: translate(var(--orb-gaze-x), var(--orb-gaze-y)); transition: transform .3s ease; }
+.orb-eye-glint { fill: #fff; }
+.orb-mouth { stroke: #321b53; stroke-width: 2.1; }
+.mouth-idle { display: block; }
+.mouth-success, .mouth-error { display: none; }
+.ruby-target { position: absolute; inset: -8px; border: 1px solid rgba(var(--orb-glow), .68); border-radius: 50%; opacity: 0; pointer-events: none; }
+.ruby-target::before, .ruby-target::after { position: absolute; inset: 4px; border: 1px solid rgba(var(--orb-glow), .7); border-radius: 50%; content: ""; }
+.ruby-target::after { inset: 9px; }
+.ruby-status-dot { position: absolute; right: 1px; bottom: 2px; width: 8px; height: 8px; margin: 0; border: 2px solid #0d1016; border-radius: 50%; background: var(--orb-accent); box-shadow: 0 0 10px rgba(var(--orb-glow), .9); transition: background .2s ease, box-shadow .2s ease; }
+.ruby-orb-wrap.orb-thinking { --orb-gaze-y: -1px; }
+.ruby-orb-wrap.orb-thinking .ruby-orb { filter: drop-shadow(0 0 10px rgba(var(--orb-glow), .9)); }
+.ruby-orb-wrap.orb-thinking .orb-plasma { animation-duration: 4.2s; }
+.ruby-orb-wrap.orb-thinking .orb-eye-lid { animation-duration: 6s; }
+.ruby-orb-wrap.orb-thinking .ruby-target { opacity: 1; animation: ruby-target-pulse 1.8s ease-out infinite; }
+.ruby-orb-wrap.orb-thinking .ruby-target::after { animation: ruby-target-pulse 1.8s .45s ease-out infinite; }
+.ruby-orb-wrap.orb-working .ruby-orb { filter: drop-shadow(0 0 12px rgba(var(--orb-glow), .95)); }
+.ruby-orb-wrap.orb-working .orb-plasma { animation-duration: 2.8s; }
+.ruby-orb-wrap.orb-working .ruby-target { opacity: 1; animation: ruby-target-pulse 1.05s ease-out infinite; }
+.ruby-orb-wrap.orb-working .ruby-target::after { animation: ruby-target-pulse 1.05s .3s ease-out infinite; }
+.ruby-orb-wrap.orb-success .ruby-orb { filter: drop-shadow(0 0 14px rgba(var(--orb-glow), .95)); animation: ruby-success-flash .8s ease-out; }
+.ruby-orb-wrap.orb-success .orb-plasma { animation-duration: 3.4s; }
+.ruby-orb-wrap.orb-success .orb-eye-lid { transform: scaleY(.14); animation: none; }
+.ruby-orb-wrap.orb-success .mouth-idle, .ruby-orb-wrap.orb-success .mouth-error { display: none; }
+.ruby-orb-wrap.orb-success .mouth-success { display: block; stroke: #164b3b; }
+.ruby-orb-wrap.orb-error .ruby-orb { filter: drop-shadow(0 0 12px rgba(var(--orb-glow), .95)); animation: ruby-error-shake .42s ease-in-out 3; }
+.ruby-orb-wrap.orb-error .orb-plasma { animation-duration: 2.5s; }
+.ruby-orb-wrap.orb-error .orb-brow { stroke: #641d35; }
+.ruby-orb-wrap.orb-error .mouth-idle, .ruby-orb-wrap.orb-error .mouth-success { display: none; }
+.ruby-orb-wrap.orb-error .mouth-error { display: block; stroke: #641d35; }
+.ruby-orb-wrap.orb-error .orb-eye-lid { animation-duration: 2.8s; }
+@keyframes ruby-body-breathe { 0%, 100% { transform: scale(1) rotate(-1deg); } 50% { transform: scale(1.035, .97) rotate(1deg); } }
+@keyframes ruby-plasma-flow { to { transform: rotate(360deg) scale(1.08); } }
+@keyframes ruby-idle-blink { 0%, 43%, 47%, 100% { transform: scaleY(1); } 45% { transform: scaleY(.12); } }
+@keyframes ruby-target-pulse { 0% { transform: scale(.72); opacity: .85; } 75%, 100% { transform: scale(1.18); opacity: 0; } }
+@keyframes ruby-success-flash { 0% { filter: drop-shadow(0 0 2px rgba(var(--orb-glow), .4)); } 42% { filter: drop-shadow(0 0 20px rgba(var(--orb-glow), 1)); } 100% { filter: drop-shadow(0 0 8px rgba(var(--orb-glow), .7)); } }
+@keyframes ruby-error-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
 .floating-ruby { position: fixed; right: 24px; bottom: 22px; display: grid; place-items: center; width: 52px; height: 52px; border: 1px solid #292e38; border-radius: 14px; background: rgba(15,17,23,.92); box-shadow: 0 12px 35px rgba(0,0,0,.4); backdrop-filter: blur(12px); }
 .floating-ruby .ruby-orb-wrap { transform: scale(1.25); }
 .ruby-trigger { cursor: pointer; }
-.ruby-orb-wrap { --orb-gaze-x: 0px; --orb-gaze-y: 0px; }
-.ruby-orb-wrap .ruby-eye, .ruby-orb-wrap .ruby-status-dot { transition: background .2s ease, box-shadow .2s ease, transform .35s ease, height .2s ease; }
-.ruby-orb-wrap.orb-thinking .ruby-orb { border-color: #6d5fd0; box-shadow: 0 0 26px rgba(139,124,255,.42), inset 0 0 12px rgba(255,255,255,.05); animation: ruby-orb-breathe 1.8s ease-in-out infinite; }
-.ruby-orb-wrap.orb-thinking .ruby-eye { animation: ruby-eye-scan 2.6s ease-in-out infinite; }
-.ruby-orb-wrap.orb-thinking .ruby-status-dot { background: #b4a8ff; animation: ruby-dot-pulse 1.2s ease-in-out infinite; }
-.ruby-orb-wrap.orb-working .ruby-orb { border-color: #67e8f9; box-shadow: 0 0 28px rgba(103,232,249,.45), inset 0 0 12px rgba(103,232,249,.08); animation: ruby-orb-work 1s ease-in-out infinite; }
-.ruby-orb-wrap.orb-working .ruby-eye { transform: translate(var(--orb-gaze-x), var(--orb-gaze-y)); background: #dcfbff; box-shadow: 0 0 7px rgba(103,232,249,.85); }
-.ruby-orb-wrap.orb-working .ruby-status-dot { background: #67e8f9; box-shadow: 0 0 11px rgba(103,232,249,.9); }
-.ruby-orb-wrap.orb-success .ruby-orb { border-color: #34d399; box-shadow: 0 0 30px rgba(52,211,153,.5), inset 0 0 12px rgba(52,211,153,.08); animation: ruby-orb-success .7s ease; }
-.ruby-orb-wrap.orb-success .ruby-eye { height: 3px; border-radius: 3px; background: #a7f3d0; transform: translateY(2px); animation: none; }
-.ruby-orb-wrap.orb-success .ruby-status-dot { background: #34d399; box-shadow: 0 0 11px rgba(52,211,153,.95); }
-.ruby-orb-wrap.orb-error .ruby-orb { border-color: #fb7185; box-shadow: 0 0 30px rgba(251,113,133,.5), inset 0 0 12px rgba(251,113,133,.08); animation: ruby-orb-error .38s ease 3; }
-.ruby-orb-wrap.orb-error .ruby-eye { background: #fecdd3; box-shadow: 0 0 7px rgba(251,113,133,.75); }
-.ruby-orb-wrap.orb-error .ruby-eye.left { transform: rotate(20deg); }
-.ruby-orb-wrap.orb-error .ruby-eye.right { transform: rotate(-20deg); }
-.ruby-orb-wrap.orb-error .ruby-status-dot { background: #fb7185; box-shadow: 0 0 11px rgba(251,113,133,.95); }
-.ruby-target { position: absolute; inset: -3px; border: 1px solid transparent; border-radius: 50%; pointer-events: none; }
-.ruby-orb-wrap.orb-thinking .ruby-target { border-color: rgba(155,140,255,.5); animation: ruby-target-pulse 1.8s ease-out infinite; }
-.ruby-orb-wrap.orb-working .ruby-target { border-color: rgba(103,232,249,.65); animation: ruby-target-pulse 1.1s ease-out infinite; }
-@keyframes ruby-orb-breathe { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.22); } }
-@keyframes ruby-orb-work { 0%, 100% { filter: brightness(1.05); } 50% { filter: brightness(1.35); } }
-@keyframes ruby-orb-success { 0% { filter: brightness(1); } 45% { filter: brightness(1.7); } 100% { filter: brightness(1); } }
-@keyframes ruby-orb-error { 0%, 100% { translate: 0 0; } 25% { translate: -2px 0; } 75% { translate: 2px 0; } }
-@keyframes ruby-dot-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
-@keyframes ruby-eye-scan { 0%, 100% { transform: translateX(-1.5px); } 50% { transform: translateX(1.5px); } }
-@keyframes ruby-target-pulse { 0% { transform: scale(.82); opacity: .85; } 70% { transform: scale(1.18); opacity: 0; } 100% { transform: scale(1.18); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .ruby-orb-wrap .ruby-orb, .ruby-orb-wrap .ruby-eye, .ruby-orb-wrap .ruby-status-dot, .ruby-orb-wrap .ruby-target { animation: none !important; }
+  .ruby-orb-wrap *,
+  .ruby-orb-wrap { animation: none !important; transition: none !important; }
+}
+.ruby-orb-wrap[data-motion="reduced"] *,
+.ruby-orb-wrap[data-motion="reduced"] {
+  animation: none !important;
+  transition: none !important;
+}
+.app-root.is-orb .ruby-orb-wrap {
+  width: 78px;
+  height: 78px;
+  flex-basis: 78px;
 }
 .runtime-panel { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; min-height: 490px; padding: 36px; border: 1px solid #292e38; border-radius: 13px; background: linear-gradient(135deg, rgba(32,35,47,.96), rgba(17,19,27,.96)); }
 .runtime-indicator { width: 10px; height: 10px; margin-bottom: 22px; border-radius: 50%; background: #9b8cff; box-shadow: 0 0 14px #9b8cff88; animation: ruby-pulse 1.4s ease-in-out infinite; }
@@ -213,53 +244,162 @@ nav { display: grid; gap: 3px; }
 }
 .nav-item.active:hover { background: rgba(143, 129, 255, .15); }
 
-/* A compact plasma-like Ruby core; keep the edge crisp instead of adding an aura. */
-.ruby-orb {
-  overflow: hidden;
-  background:
-    radial-gradient(ellipse at 31% 26%, rgba(255,255,255,.92) 0 2%, transparent 13%),
-    radial-gradient(ellipse at 68% 71%, rgba(105,76,255,.9) 0 4%, transparent 25%),
-    conic-gradient(from 28deg at 52% 48%, #f3b6ff, #603cff 15%, #17172b 27%, #ff5fba 39%, #281f70 53%, #8a5cff 67%, #111321 79%, #e9b0ff 91%, #f3b6ff),
-    radial-gradient(circle at 38% 32%, #d8c8ff, #3b238d 48%, #090a12 76%);
-  border: 1px solid rgba(195, 177, 255, .55);
-  box-shadow: inset 0 0 8px rgba(255,255,255,.16);
+
+/* Ruby's restored liquid-orb artwork: quiet dark face core, expressive eyes,
+   restrained plasma at the edge, and no idle mouth. */
+.ruby-orb-wrap {
+  --orb-highlight: #d8ccff;
+  isolation: isolate;
 }
-.ruby-orb::before {
-  content: "";
+.ruby-orb-wrap.orb-thinking { --orb-highlight: #e4dcff; }
+.ruby-orb-wrap.orb-working { --orb-highlight: #c8fbff; }
+.ruby-orb-wrap.orb-success { --orb-highlight: #e1d9ff; }
+.ruby-orb-wrap.orb-error { --orb-highlight: #ffd0d8; }
+.ruby-orb-wrap .ruby-liquid-art {
+  display: block;
   position: absolute;
-  inset: -18%;
-  border-radius: 50%;
-  background: conic-gradient(from 150deg, transparent 0 14%, rgba(255, 120, 219, .82) 22%, transparent 33% 48%, rgba(124, 103, 255, .92) 58%, transparent 72% 100%);
-  filter: blur(2px);
+  inset: -7%;
+  width: 114%;
+  height: 114%;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  filter: drop-shadow(0 0 5px rgba(var(--orb-glow), .24));
+  transform-origin: center;
+  animation: ruby-liquid-float 4.6s ease-in-out infinite;
+}
+.ruby-orb-wrap .orb-liquid-shell {
+  stroke: rgba(226, 218, 255, .68);
+  stroke-width: 1.1;
+  filter: drop-shadow(0 0 2px rgba(var(--orb-glow), .32));
+}
+.ruby-orb-wrap .orb-liquid-current {
+  transform-origin: 50px 50px;
+  animation: ruby-liquid-rotate 10s linear infinite;
+}
+.ruby-orb-wrap .orb-current-line {
+  fill: none;
+  stroke: var(--orb-accent);
+  stroke-width: 7;
+  stroke-linecap: round;
+  opacity: .48;
+  filter: blur(1.8px);
+}
+.ruby-orb-wrap .current-a { animation: ruby-current-flow 5s ease-in-out infinite alternate; }
+.ruby-orb-wrap .current-b {
+  stroke: #a8eaff;
+  stroke-width: 4.5;
+  opacity: .42;
+  animation: ruby-current-flow 6.5s ease-in-out infinite alternate-reverse;
+}
+.ruby-orb-wrap .current-c {
+  stroke: var(--orb-secondary);
+  stroke-width: 6;
+  opacity: .4;
+  animation: ruby-current-flow 7s ease-in-out infinite alternate;
+}
+.ruby-orb-wrap .orb-current-cloud {
+  opacity: .42;
   mix-blend-mode: screen;
-  animation: ruby-plasma-drift 7s linear infinite;
-  pointer-events: none;
+  filter: blur(1.2px);
+  animation: ruby-cloud-breathe 4s ease-in-out infinite alternate;
 }
-.ruby-orb::after {
-  content: "";
-  position: absolute;
-  inset: 2px;
-  border-radius: inherit;
-  background: radial-gradient(ellipse at 50% 48%, transparent 24%, rgba(4, 5, 12, .28) 75%, rgba(2, 3, 8, .6));
-  pointer-events: none;
+.ruby-orb-wrap .orb-current-glint { fill: #fff; opacity: .34; filter: blur(3px); }
+.ruby-orb-wrap .orb-liquid-sheen { opacity: .7; }
+.ruby-orb-wrap .orb-liquid-core {
+  stroke: rgba(255,255,255,.08);
+  stroke-width: .7;
 }
-.ruby-eye { z-index: 1; top: 43%; width: 4px; height: 6px; background: #fff8ff; box-shadow: 0 0 3px rgba(255,255,255,.6); animation: ruby-idle-blink 4.8s ease-in-out infinite; }
-.ruby-eye.left { left: 31%; }
-.ruby-eye.right { right: 31%; animation-delay: .04s; }
-.ruby-target { display: none; }
-.ruby-orb-wrap:not(.orb-thinking):not(.orb-working) .ruby-orb { box-shadow: inset 0 0 8px rgba(255,255,255,.16); }
-.ruby-trigger:hover .ruby-orb { box-shadow: inset 0 0 8px rgba(255,255,255,.18); }
-.ruby-orb-wrap.orb-thinking .ruby-orb,
-.ruby-orb-wrap.orb-working .ruby-orb,
-.ruby-orb-wrap.orb-success .ruby-orb,
-.ruby-orb-wrap.orb-error .ruby-orb { box-shadow: inset 0 0 8px rgba(255,255,255,.16); }
-.ruby-orb-wrap.orb-thinking .ruby-target,
-.ruby-orb-wrap.orb-working .ruby-target { display: none; }
-@keyframes ruby-idle-blink {
-  0%, 43%, 47%, 100% { transform: scaleY(1); }
-  45% { transform: scaleY(.12); }
+.ruby-orb-wrap .orb-face-brow {
+  fill: none;
+  stroke: #d9d7f6;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  opacity: .82;
 }
-@keyframes ruby-plasma-drift { to { transform: rotate(360deg); } }
+.ruby-orb-wrap .orb-face-eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ruby-idle-blink 4.8s ease-in-out infinite;
+}
+.ruby-orb-wrap .orb-face-eye-white {
+  fill: #fbfaff;
+  filter: drop-shadow(0 0 2px rgba(255,255,255,.55));
+}
+.ruby-orb-wrap .orb-face-pupil { fill: #28263c; }
+.ruby-orb-wrap .orb-face-glint { fill: #fff; }
+.ruby-orb-wrap .orb-face-mouth {
+  fill: none;
+  stroke: #e6e0ff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0;
+}
+.ruby-orb-wrap .mouth-success,
+.ruby-orb-wrap .mouth-error,
+.ruby-orb-wrap .mouth-speaking { fill: none; }
+.ruby-orb-wrap.orb-success .mouth-success { opacity: .95; }
+.ruby-orb-wrap.orb-error .mouth-error { opacity: .95; }
+.ruby-orb-wrap.orb-speaking .mouth-speaking {
+  opacity: 1;
+  fill: rgba(230, 224, 255, .9);
+  animation: ruby-mouth-talk .22s ease-in-out infinite alternate;
+}
+.ruby-orb-wrap.orb-thinking .ruby-liquid-art { animation-duration: 2.8s; }
+.ruby-orb-wrap.orb-thinking .orb-liquid-current { animation-duration: 5s; }
+.ruby-orb-wrap.orb-working .ruby-liquid-art { animation-duration: 1.9s; }
+.ruby-orb-wrap.orb-working .orb-liquid-current { animation-duration: 3.3s; }
+.ruby-orb-wrap.orb-success .ruby-liquid-art {
+  filter: drop-shadow(0 0 8px rgba(var(--orb-glow), .45));
+}
+.ruby-orb-wrap.orb-error .ruby-liquid-art { animation: ruby-liquid-error .38s ease-in-out 3; }
+.ruby-orb-wrap.orb-thinking .ruby-liquid-art,
+.ruby-orb-wrap.orb-working .ruby-liquid-art,
+.ruby-orb-wrap.orb-success .ruby-liquid-art,
+.ruby-orb-wrap.orb-error .ruby-liquid-art {
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+@keyframes ruby-liquid-float {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-1.3%) scale(1.012); }
+}
+@keyframes ruby-liquid-rotate { to { transform: rotate(360deg); } }
+@keyframes ruby-current-flow {
+  from { transform: translateX(-5px) translateY(2px) scaleX(.96); }
+  to { transform: translateX(6px) translateY(-3px) scaleX(1.04); }
+}
+@keyframes ruby-cloud-breathe {
+  from { opacity: .3; transform: translate(-2px, 1px) scale(.97); }
+  to { opacity: .55; transform: translate(3px, -2px) scale(1.04); }
+}
+@keyframes ruby-liquid-error {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  25% { transform: translateX(-2px) rotate(-1deg); }
+  75% { transform: translateX(2px) rotate(1deg); }
+}
+@keyframes ruby-mouth-talk {
+  from { transform: scaleY(.65); }
+  to { transform: scaleY(1.2); }
+}
 @media (prefers-reduced-motion: reduce) {
-  .ruby-orb::before, .ruby-eye { animation: none !important; }
+  .ruby-orb-wrap .ruby-liquid-art,
+  .ruby-orb-wrap .orb-liquid-current,
+  .ruby-orb-wrap .orb-current-line,
+  .ruby-orb-wrap .orb-current-cloud,
+  .ruby-orb-wrap .orb-face-eye,
+  .ruby-orb-wrap .mouth-speaking {
+    animation: none !important;
+  }
+}
+.ruby-orb-wrap[data-motion="reduced"] .ruby-liquid-art,
+.ruby-orb-wrap[data-motion="reduced"] .orb-liquid-current,
+.ruby-orb-wrap[data-motion="reduced"] .orb-current-line,
+.ruby-orb-wrap[data-motion="reduced"] .orb-current-cloud,
+.ruby-orb-wrap[data-motion="reduced"] .orb-face-eye,
+.ruby-orb-wrap[data-motion="reduced"] .mouth-speaking {
+  animation: none !important;
 }
