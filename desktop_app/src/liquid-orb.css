@@ -1,0 +1,146 @@
+/* Finalized Ruby liquid-orb visual, ported to the Electron renderer.
+   The Electron bridge/state logic stays in RubyOrb.jsx and orbState.js. */
+.ruby-trigger {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  outline-offset: 3px;
+  background: transparent;
+}
+.ruby-orb-wrap {
+  isolation: isolate;
+  overflow: visible;
+}
+.ruby-orb-wrap::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: -5%;
+  border-radius: 47% 53% 50% 50% / 51% 46% 54% 49%;
+  background:
+    radial-gradient(ellipse at 30% 24%, rgba(255,255,255,.9), transparent 18%),
+    conic-gradient(from 20deg, #b7a0ff, #5542ff 17%, #171c60 29%, #a85cff 42%, #3431c5 55%, #42a5ff 69%, #22206d 82%, #d7a0ff 94%, #b7a0ff);
+  -webkit-mask: radial-gradient(circle, transparent 0 59%, #000 63% 100%);
+  mask: radial-gradient(circle, transparent 0 59%, #000 63% 100%);
+  filter: drop-shadow(0 0 5px rgba(109, 86, 255, .32));
+  animation: ruby-liquid-flow 9s linear infinite, ruby-liquid-morph 5.5s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+.ruby-orb {
+  z-index: 1;
+  inset: 15%;
+  overflow: visible;
+  border: 1px solid rgba(111, 117, 145, .55);
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 33% 23%, #272933 0, #111218 25%, #050609 64%, #000 100%);
+  box-shadow: inset 0 2px 5px rgba(255,255,255,.06), 0 1px 4px rgba(0,0,0,.3);
+  animation: ruby-core-breathe 4.8s ease-in-out infinite;
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+.ruby-orb::before {
+  display: none;
+  content: none;
+}
+.ruby-orb::after {
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(ellipse at 30% 20%, rgba(255,255,255,.06), transparent 40%, rgba(0,0,0,.32) 100%);
+}
+.ruby-eye {
+  z-index: 2;
+  top: 39%;
+  width: 12%;
+  height: 19%;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #fff, #dce8ff);
+  box-shadow: 0 0 4px rgba(236, 242, 255, .45);
+  transform: translate(var(--orb-gaze-x), var(--orb-gaze-y));
+  animation: ruby-idle-blink 4.2s ease-in-out infinite;
+}
+.ruby-eye.left { left: 25%; }
+.ruby-eye.right { right: 25%; animation-delay: .045s; }
+.ruby-orb-wrap.orb-thinking::before {
+  background:
+    radial-gradient(ellipse at 30% 24%, rgba(255,255,255,.9), transparent 18%),
+    conic-gradient(from 20deg, #d2c5ff, #745cff 18%, #3325a8 34%, #c18bff 51%, #4d48ef 69%, #282080 84%, #d2c5ff);
+  filter: drop-shadow(0 0 7px rgba(139,124,255,.48));
+  animation-duration: 4.5s, 4s;
+}
+.ruby-orb-wrap.orb-thinking .ruby-orb {
+  border-color: rgba(161,145,255,.72);
+  animation-duration: 1.8s;
+}
+.ruby-orb-wrap.orb-working::before {
+  background:
+    radial-gradient(ellipse at 30% 24%, rgba(255,255,255,.95), transparent 18%),
+    conic-gradient(from 20deg, #b8fbff, #22d3ee 18%, #1256a4 34%, #67e8f9 51%, #1c8ab6 69%, #123b78 84%, #b8fbff);
+  filter: drop-shadow(0 0 8px rgba(34,211,238,.55));
+  animation-duration: 2.3s, 2.8s;
+}
+.ruby-orb-wrap.orb-working .ruby-orb {
+  border-color: rgba(103,232,249,.7);
+  animation-duration: 1s;
+}
+.ruby-orb-wrap.orb-success::before {
+  background: conic-gradient(from 20deg, #bbf7d0, #34d399 20%, #166534 38%, #6ee7b7 58%, #15803d 78%, #bbf7d0);
+  filter: drop-shadow(0 0 8px rgba(52,211,153,.5));
+  animation-duration: 2.8s, 2.8s;
+}
+.ruby-orb-wrap.orb-success .ruby-orb {
+  border-color: rgba(52,211,153,.8);
+  animation: ruby-orb-success .7s ease;
+}
+.ruby-orb-wrap.orb-error::before {
+  background: conic-gradient(from 20deg, #ffc2cd, #fb7185 20%, #881337 38%, #ff526b 58%, #be123c 78%, #ffc2cd);
+  filter: drop-shadow(0 0 8px rgba(251,113,133,.52));
+  animation-duration: 1.6s, 1.8s;
+}
+.ruby-orb-wrap.orb-error .ruby-orb {
+  border-color: rgba(251,113,133,.8);
+  animation: ruby-orb-error .38s ease 3;
+}
+.ruby-orb-wrap.orb-thinking .ruby-eye { animation: ruby-eye-scan 2.6s ease-in-out infinite; }
+.ruby-orb-wrap.orb-working .ruby-eye { background: #e6fdff; }
+.ruby-orb-wrap.orb-success .ruby-eye { height: 8%; transform: translateY(35%); }
+.ruby-orb-wrap.orb-error .ruby-eye.left { transform: rotate(20deg); }
+.ruby-orb-wrap.orb-error .ruby-eye.right { transform: rotate(-20deg); }
+.ruby-orb-wrap.orb-thinking .ruby-status-dot,
+.ruby-orb-wrap.orb-working .ruby-status-dot,
+.ruby-orb-wrap.orb-success .ruby-status-dot,
+.ruby-orb-wrap.orb-error .ruby-status-dot { z-index: 3; }
+.app-root.is-orb .ruby-trigger {
+  width: 100%;
+  height: 100%;
+}
+.app-root.is-orb .ruby-orb-wrap {
+  width: 78px;
+  height: 78px;
+  flex-basis: 78px;
+  transform: none;
+}
+.app-root.is-orb .ruby-status-dot {
+  right: 0;
+  bottom: 2px;
+  width: 9px;
+  height: 9px;
+  border-color: rgba(5,6,9,.9);
+}
+.app-root.is-orb .ruby-eye {
+  width: 12%;
+  height: 19%;
+}
+@keyframes ruby-liquid-flow { to { transform: rotate(360deg); } }
+@keyframes ruby-liquid-morph {
+  0% { border-radius: 47% 53% 50% 50% / 51% 46% 54% 49%; }
+  50% { border-radius: 53% 47% 46% 54% / 46% 54% 47% 53%; }
+  100% { border-radius: 49% 51% 54% 46% / 53% 48% 52% 47%; }
+}
+@keyframes ruby-core-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.025); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ruby-orb-wrap::before, .ruby-orb { animation: none !important; }
+}
